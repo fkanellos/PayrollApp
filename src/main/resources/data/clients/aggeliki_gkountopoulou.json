@@ -1,0 +1,698 @@
+{
+  "konstantinos_kourmouzis": {
+    "name": "Κωνσταντίνος Κουρμούζης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_koutiva": {
+    "name": "Μαρία Κουτίβα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "panagiotis_zanis": {
+    "name": "Παναγιώτης Ζανής",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_papagiannakis": {
+    "name": "Γιώργος Παπαγιαννέρης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_batziou": {
+    "name": "Μαρία Μπάτζιου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_zaxos": {
+    "name": "Γιώργος Ζάχος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "georgia_tsiatsiani": {
+    "name": "Γεωργία Τσιατσιάνη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "eleni_petropoulou": {
+    "name": "Ελένη Πετροπούλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "evangelia_mendrinou": {
+    "name": "Ευαγγελία Μενδρινού",
+    "price": 40.0,
+    "employee_price": 18.0,
+    "company_price": 22.0
+  },
+  "louzia_rigopoulou": {
+    "name": "Λουζία Ρηγοπούλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "stella_lianou": {
+    "name": "Στέλλα Λιανού",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "dimitris_dafnis": {
+    "name": "Δημήτρης Δαφνής",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "vagelis_varvaressos": {
+    "name": "Βαγγέλης Βαρβαρέσσος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "daniel_minga": {
+    "name": "Ντάνιελ Μίνγκα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "aggelos_farmakis": {
+    "name": "Άγγελος Φαρμάκης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "antonis_karatzas": {
+    "name": "Αντώνης Καρατζάς",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "eleni_mavromanolaki": {
+    "name": "Ελένη Μαυρομανωλάκη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "sofia_alexandrakou": {
+    "name": "Σοφία Αλεξανδράκου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "alexia_komninou": {
+    "name": "Αλεξία Κομνηνού",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "lambros_saliveros": {
+    "name": "Λάμπρος Σαλίβερος",
+    "price": 40.0,
+    "employee_price": 18.0,
+    "company_price": 22.0
+  },
+  "emmanouela_kalogeropoulou": {
+    "name": "Εμμανουέλα Καλογεροπούλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giannis_papoutsis": {
+    "name": "Γιάννης Παπουτσής",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "branimira_zantza": {
+    "name": "Branimira Zantza",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "eleftheria_nikolaou": {
+    "name": "Ελευθερία Νικολάου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "alexandra_spyrou": {
+    "name": "Αλεξάνδρα Σπύρου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "zoi_preka": {
+    "name": "Ζωή Πρέκα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "argyro_davou": {
+    "name": "Αργυρώ Δάβου",
+    "price": 40.0,
+    "employee_price": 18.0,
+    "company_price": 22.0
+  },
+  "anastasia_rapti": {
+    "name": "Αναστασία Ράπτη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_stefanidou": {
+    "name": "Μαρία Στεφανίδου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "mando_kavouraki": {
+    "name": "Μαντώ Καβουράκη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_lolis": {
+    "name": "Γιώργος Λόλης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "christos_bouzanis": {
+    "name": "Χρήστος Μπουζάνης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "elena_fotiadou": {
+    "name": "Έλενα Φωτιάδου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_argyrou": {
+    "name": "Μαρία Αργυρού",
+    "price": 40.0,
+    "employee_price": 18.0,
+    "company_price": 22.0
+  },
+  "konstantina_skafida": {
+    "name": "Κωνσταντίνα Σκαφιδά",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "orestis_tsitouris": {
+    "name": "Ορέστης Τσιτούρης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "panagiotis_tsokanas": {
+    "name": "Παναγιώτης Τσοκανάς",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "christos_kolovos": {
+    "name": "Χρήστος Κολοβός",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "stelios_aralis": {
+    "name": "Στέλιος Αράλης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "azad_tsompanian": {
+    "name": "Αζάντ Τσομπανιάν",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "konstantina_bellou": {
+    "name": "Κωνσταντίνα Μπέλλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "fotis_kanellos": {
+    "name": "Φώτης Κανέλλος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "anna_maria_latsi": {
+    "name": "Άννα Μαρία Λάτσι",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "athina_xatzixaralampous": {
+    "name": "Αθηνά Χατζηχαραλάμπους",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "vasiliki_lagou": {
+    "name": "Βασιλική Λάγου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "athina_tzamaria": {
+    "name": "Αθηνά Τζαμαρία",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "gkresilda_metse": {
+    "name": "Γκρεσίλντα Μέτσε",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "grigoris_tentzeris": {
+    "name": "Γρηγόρης Τέντζερης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "eleftherios_kouvaris": {
+    "name": "Ελευθέριος Κούβαρης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "nektarios_apostolopoulos": {
+    "name": "Νεκτάριος Αποστολόπουλος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "sofia_koutsogianni": {
+    "name": "Σοφία Κουτσογιάννη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "aggelos_kalogiratos": {
+    "name": "Άγγελος Καλογηράτος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "dimitra_karagkounidi": {
+    "name": "Δήμητρα Καραγκουνίδη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "mando_tzeferakou": {
+    "name": "Μαντώ Τζεφεράκου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "mariletta_spyropoulou": {
+    "name": "Μαριλέττα Σπυροπούλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "thodoris_bourandas": {
+    "name": "Θοδωρής Μπουραντάς",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "georgia_tsina": {
+    "name": "Γεωργία Τσίνα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "dimitris_stamos": {
+    "name": "Δημήτρης Στάμος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "erlinda_souli": {
+    "name": "Ερίλντα Σούλη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "fotis_zois": {
+    "name": "Φώτης Ζώης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "ioli_triantafyllou": {
+    "name": "Ιόλη Τριανταφύλλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "pavlina_kretsi": {
+    "name": "Παυλίνα Κρέτση",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "konstantina_vardaka": {
+    "name": "Κωνσταντίνα Βαρδάκα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "foteini_apostolea": {
+    "name": "Φωτεινή Αποστολέα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "renia_psilla": {
+    "name": "Ρένια Ψυλλά",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "dimitra_kontopanos": {
+    "name": "Δήμητρα Κοντοπάνου",
+    "price": 40.0,
+    "employee_price": 18.0,
+    "company_price": 22.0
+  },
+  "panagiotis_bonofortis": {
+    "name": "Παναγιώτης Μπονοφόρτης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "nikos_kotsirilos": {
+    "name": "Νίκος Κοτσιρίλος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "emily_sarantopoulou": {
+    "name": "Έμιλυ Σαραντοπούλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "ermis_gerontakis": {
+    "name": "Ερμής Γεροντάκης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "konstantinos_kakoulidis": {
+    "name": "Κωνσταντίνος Κακουλίδης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "dimitris_anthis": {
+    "name": "Δημήτρης Άνθης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "ioanna_kanellopoulou": {
+    "name": "Ιωάννα Κανελλοπούλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "alexandros_baris": {
+    "name": "Αλέξανδρος Μπάρης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "mairy_panagiota_skondrianou": {
+    "name": "Μαίρη Παναγιώτα Σκονδριάνου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_iordanidis": {
+    "name": "Γιώργος Ιορδανίδης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "flora_katsarea": {
+    "name": "Φλώρα Κατσαρέα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_bitra": {
+    "name": "Μαρία Μπίτρα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "ria_stavrou": {
+    "name": "Ρία Σταύρου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "andreas_kostanasios": {
+    "name": "Ανδρέας Κωστανάσιος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "anastasia_kothroula": {
+    "name": "Αναστασία Κοθρούλα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_giannakopoulos": {
+    "name": "Γιώργος Γιαννακόπουλος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "sofi_evaggalidou": {
+    "name": "Σόφι Ευαγγελίδου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "sofia_dimitriadh": {
+    "name": "Σοφία Δημητριάδη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "roula_asprodini": {
+    "name": "Ρούλα Ασπροδίνη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_balaka": {
+    "name": "Μαρία Μπαλάκα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "olivia_xaidini": {
+    "name": "Ολίβια Χαιντίνι",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "ali_mustafa": {
+    "name": "Ali Mustafa",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giannis_marinakis": {
+    "name": "Γιάννης Μαρινάκης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "panos_karaplis": {
+    "name": "Πάνος Καραπλής",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "antonis_kalogiannis": {
+    "name": "Αντώνης Καλογιάννης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_patsiadis": {
+    "name": "Γιώργος Πατσιάδης",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "anastasis_evastratiou": {
+    "name": "Αναστάσης Ευστρατίου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "galomytakou_stavroula_rapanakis_giorgos": {
+    "name": "Γαλομυτάκου Σταυρούλα - Ραπανάκης Γιώργος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "vaggelis_gkogkos": {
+    "name": "Βαγγέλης Γκόγκος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "nikos_kapranos": {
+    "name": "Νίκος Καπράνος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "kleopatra_vlami": {
+    "name": "Κλεοπάτρα Βλάμη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "mixalis_zervas": {
+    "name": "Μιχάλης Ζέρβας",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "lambros_serpanos": {
+    "name": "Λάμπρος Σερπάνος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_preka": {
+    "name": "Μαρία Πρέκα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_varsami": {
+    "name": "Μαρία Βαρσάμη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "nikos_marinos": {
+    "name": "Νίκος Μαρίνος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "emmanouela_karytinou": {
+    "name": "Εμμανουέλα Καρυτινού",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "panos_papantwnpoulos": {
+    "name": "Πάνος Παπαντωνόπουλος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "konstantinos_karakostas": {
+    "name": "Κωνσταντίνος Καρακώστας",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "eleana_xatziapostolou": {
+    "name": "Ελεάνα Χατζηαποστόλου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "rena_vasilaki": {
+    "name": "Ρένα Βασιλάκη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "katerina_lymperi_thanasis_manetos": {
+    "name": "Κατερίνα Λυμπέρη - Θανάσης Μανέτος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "olga_vafeiadaki": {
+    "name": "Όλγα Βαφειαδάκη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "konstantina_politi": {
+    "name": "Κωνσταντίνα Πολίτη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "filitsa_antypa": {
+    "name": "Φιλίτσα Αντύπα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giorgos_darras": {
+    "name": "Γιώργος Δάρρας",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "ilias_anastasakos_afroditi_xristou": {
+    "name": "Ηλίας Αναστασάκος - Αφροδίτη Χρήστου",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "sotiris_seklos": {
+    "name": "Σωτήρης Σεκλός",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "athanasia_prwtopsalti": {
+    "name": "Αθανασία Πρωτοψάλτη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "georgia_zafeiri": {
+    "name": "Γεωργία Ζαφείρη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  }
+}
