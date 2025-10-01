@@ -41,6 +41,18 @@ dependencies {
     implementation(libs.google.api.services.calendar)
     implementation(libs.google.auth.library.oauth2)
 
+    // PDF Generation
+    implementation(libs.itext.core)
+    implementation(libs.itext.layout)
+
+    // Excel Generation
+    implementation(libs.apache.poi)
+    implementation(libs.apache.poi.ooxml)
+
+    // Google Sheets & Drive API
+    implementation(libs.google.api.services.sheets)
+    implementation(libs.google.api.services.drive)
+
     // Testing - Using catalog ✅
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.kotlin.test.junit5)

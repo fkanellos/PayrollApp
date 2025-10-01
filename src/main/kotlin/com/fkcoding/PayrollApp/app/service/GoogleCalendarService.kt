@@ -43,7 +43,11 @@ class GoogleCalendarService(
         private const val APPLICATION_NAME = "Payroll System"
         private val JSON_FACTORY: JsonFactory = GsonFactory.getDefaultInstance()
         private const val TOKENS_DIRECTORY_PATH = "tokens"
-        private val SCOPES = listOf(CalendarScopes.CALENDAR_READONLY)
+        private val SCOPES = listOf(
+            CalendarScopes.CALENDAR_READONLY,
+            "https://www.googleapis.com/auth/spreadsheets",  // ADD THIS
+            "https://www.googleapis.com/auth/drive.file"      // ADD THIS (for folder access)
+        )
     }
 
     @Value("\${google.calendar.credentials.path:classpath:data/credentials.json}")

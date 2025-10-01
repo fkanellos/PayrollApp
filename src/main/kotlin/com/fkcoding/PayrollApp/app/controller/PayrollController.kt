@@ -6,6 +6,7 @@ import com.fkcoding.PayrollApp.app.service.PayrollCalculationService
 import com.fkcoding.PayrollApp.app.repository.EmployeeRepository
 import com.fkcoding.PayrollApp.app.repository.ClientRepository
 import com.fkcoding.PayrollApp.app.service.CalendarEvent
+import com.fkcoding.PayrollApp.app.service.PayrollCacheService
 import com.fkcoding.PayrollApp.app.service.PayrollReport
 import org.springframework.web.bind.annotation.*
 import org.springframework.http.ResponseEntity
@@ -66,43 +67,52 @@ class PayrollController(
     private val employeeRepository: EmployeeRepository,
     private val clientRepository: ClientRepository,
     private val googleCalendarService: GoogleCalendarService,
-    private val payrollService: PayrollCalculationService
+    private val payrollService: PayrollCalculationService,
+    private val payrollCacheService: PayrollCacheService
 ) {
 
     @PostMapping("/calculate")
-    fun calculatePayroll(@RequestBody request: PayrollRequest): ResponseEntity<PayrollResponse> {
+    fun calculatePayroll(@RequestBody request: PayrollRequest): ResponseEntity<Map<String, Any>> {
         try {
-            // 1. Get employee
             val employee = employeeRepository.findById(request.employeeId).orElse(null)
                 ?: return ResponseEntity.badRequest().build()
 
-            // 2. Parse dates
             val startDate = LocalDateTime.parse(request.startDate)
             val endDate = LocalDateTime.parse(request.endDate)
-
-            // 3. Get clients for employee
             val clients = clientRepository.findByEmployeeId(request.employeeId)
+
             if (clients.isEmpty()) {
-                return ResponseEntity.ok(createEmptyPayrollResponse(employee, startDate, endDate))
+                val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
+                val id = payrollCacheService.store(emptyResponse)
+                return ResponseEntity.ok(mapOf(
+                    "id" to id,
+                    "payroll" to emptyResponse
+                ))
             }
 
-            // 4. Get calendar events
             val events = googleCalendarService.getEventsForPeriod(employee.calendarId, startDate, endDate)
             if (events.isEmpty()) {
-                return ResponseEntity.ok(createEmptyPayrollResponse(employee, startDate, endDate))
+                val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
+                val id = payrollCacheService.store(emptyResponse)
+                return ResponseEntity.ok(mapOf(
+                    "id" to id,
+                    "payroll" to emptyResponse
+                ))
             }
 
-            // 5. Filter events by client names
             val clientNames = clients.map { it.name }
             val clientEvents = googleCalendarService.filterEventsByClientNames(events, clientNames)
-
-            // 6. Calculate payroll
             val payrollReport = payrollService.calculatePayroll(employee, clients, clientEvents, startDate, endDate)
-
-            // 7. Convert to response format
             val response = createPayrollResponse(payrollReport, clientEvents)
 
-            return ResponseEntity.ok(response)
+            // Store in cache
+            val payrollId = payrollCacheService.store(response)
+
+            // Return with ID
+            return ResponseEntity.ok(mapOf(
+                "id" to payrollId,
+                "payroll" to response
+            ))
 
         } catch (e: Exception) {
             println("Error calculating payroll: ${e.message}")

@@ -19,6 +19,12 @@ google-auth-library = "1.19.0"
 h2 = "2.2.224"
 postgresql = "42.7.2"
 
+#PDF Generation
+itext = "8.0.2"
+
+#Excel Generation
+apache-poi = "5.2.5"
+
 [libraries]
 # Spring Boot Starters
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
@@ -75,6 +81,18 @@ spring-rabbit-test = { module = "org.springframework.amqp:spring-rabbit-test" }
 spring-restdocs-mockmvc = { module = "org.springframework.restdocs:spring-restdocs-mockmvc" }
 spring-security-test = { module = "org.springframework.security:spring-security-test" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+#PDF Generation
+itext-core = { module = "com.itextpdf:itext-core", version.ref = "itext" }
+itext-layout = { module = "com.itextpdf:layout", version.ref = "itext" }
+
+#Excel Generation
+apache-poi = { module = "org.apache.poi:poi", version.ref = "apache-poi" }
+apache-poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "apache-poi" }
+
+# Google Sheets & Drive API
+google-api-services-sheets = { module = "com.google.apis:google-api-services-sheets", version = "v4-rev20220927-2.0.0" }
+google-api-services-drive = { module = "com.google.apis:google-api-services-drive", version = "v3-rev20220815-2.0.0" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
