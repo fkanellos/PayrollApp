@@ -1,7 +1,15 @@
 pluginManagement {
-	repositories {
-		maven { url = uri("https://repo.spring.io/snapshot") }
-		gradlePluginPortal()
-	}
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
 }
+
+dependencyResolutionManagement {
+    @Suppress("UnstableApiUsage")
+    repositories {
+        mavenCentral()
+    }
+}
+
 rootProject.name = "PayrollApp"

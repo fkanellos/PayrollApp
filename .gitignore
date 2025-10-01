@@ -44,3 +44,7 @@ Thumbs.db
 # Database
 *.db
 *.sqlite
+
+# Kotlin Compiler Cache
+.kotlin/
+*.salive
