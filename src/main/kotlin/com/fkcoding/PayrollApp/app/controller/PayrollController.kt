@@ -1,13 +1,9 @@
 package com.fkcoding.PayrollApp.app.controller
 
 import com.fkcoding.PayrollApp.app.entity.Employee
-import com.fkcoding.PayrollApp.app.service.GoogleCalendarService
-import com.fkcoding.PayrollApp.app.service.PayrollCalculationService
+import com.fkcoding.PayrollApp.app.service.*
 import com.fkcoding.PayrollApp.app.repository.EmployeeRepository
 import com.fkcoding.PayrollApp.app.repository.ClientRepository
-import com.fkcoding.PayrollApp.app.service.CalendarEvent
-import com.fkcoding.PayrollApp.app.service.PayrollCacheService
-import com.fkcoding.PayrollApp.app.service.PayrollReport
 import org.springframework.web.bind.annotation.*
 import org.springframework.http.ResponseEntity
 import java.time.LocalDateTime
@@ -15,8 +11,9 @@ import java.time.format.DateTimeFormatter
 
 data class PayrollRequest(
     val employeeId: String,
-    val startDate: String, // ISO format: 2024-09-01T00:00:00
-    val endDate: String     // ISO format: 2024-09-30T23:59:59
+    val startDate: String,
+    val endDate: String,
+    val syncToSheets: Boolean = false  // Option για να γράψει στο Sheets
 )
 
 data class PayrollResponse(
@@ -24,7 +21,8 @@ data class PayrollResponse(
     val period: String,
     val summary: PayrollSummary,
     val clientBreakdown: List<ClientPayrollDetail>,
-    val generatedAt: String
+    val generatedAt: String,
+    val syncedToSheets: Boolean = false
 )
 
 data class EmployeeInfo(
@@ -56,67 +54,80 @@ data class EventDetail(
     val date: String,
     val time: String,
     val duration: String,
-    val status: String, // "completed", "cancelled", "pending_payment"
+    val status: String,
     val colorId: String?
 )
 
 @RestController
 @RequestMapping("/payroll")
-@CrossOrigin(origins = ["http://localhost:3000"])
+@CrossOrigin(origins = ["http://localhost:3000", "*"])
 class PayrollController(
     private val employeeRepository: EmployeeRepository,
     private val clientRepository: ClientRepository,
     private val googleCalendarService: GoogleCalendarService,
     private val payrollService: PayrollCalculationService,
-    private val payrollCacheService: PayrollCacheService
+    private val sheetsSyncService: SheetsSyncService
 ) {
 
     @PostMapping("/calculate")
-    fun calculatePayroll(@RequestBody request: PayrollRequest): ResponseEntity<Map<String, Any>> {
-        try {
+    fun calculatePayroll(@RequestBody request: PayrollRequest): ResponseEntity<PayrollResponse> {
+        return try {
+            println("📊 Calculating payroll for employee: ${request.employeeId}")
+
+            // 1. Get employee
             val employee = employeeRepository.findById(request.employeeId).orElse(null)
                 ?: return ResponseEntity.badRequest().build()
 
+            // 2. Parse dates
             val startDate = LocalDateTime.parse(request.startDate)
             val endDate = LocalDateTime.parse(request.endDate)
-            val clients = clientRepository.findByEmployeeId(request.employeeId)
 
+            // 3. Get clients (from Database - loaded από JSON files)
+            val clients = clientRepository.findByEmployeeId(request.employeeId)
             if (clients.isEmpty()) {
-                val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
-                val id = payrollCacheService.store(emptyResponse)
-                return ResponseEntity.ok(mapOf(
-                    "id" to id,
-                    "payroll" to emptyResponse
-                ))
+                println("⚠️  No clients found in database - returning empty payroll")
+                return ResponseEntity.ok(createEmptyPayrollResponse(employee, startDate, endDate))
             }
 
+            // 4. Get calendar events
             val events = googleCalendarService.getEventsForPeriod(employee.calendarId, startDate, endDate)
             if (events.isEmpty()) {
-                val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
-                val id = payrollCacheService.store(emptyResponse)
-                return ResponseEntity.ok(mapOf(
-                    "id" to id,
-                    "payroll" to emptyResponse
-                ))
+                println("⚠️  No calendar events found - returning empty payroll")
+                return ResponseEntity.ok(createEmptyPayrollResponse(employee, startDate, endDate))
             }
 
+            // 5. Filter events by client names
             val clientNames = clients.map { it.name }
             val clientEvents = googleCalendarService.filterEventsByClientNames(events, clientNames)
+
+            // 6. Calculate payroll
             val payrollReport = payrollService.calculatePayroll(employee, clients, clientEvents, startDate, endDate)
-            val response = createPayrollResponse(payrollReport, clientEvents)
 
-            // Store in cache
-            val payrollId = payrollCacheService.store(response)
+            // 7. Sync to Sheets if requested
+            var syncedToSheets = false
+            if (request.syncToSheets) {
+                println("📤 Syncing payroll to Sheets...")
+                val syncResult = sheetsSyncService.syncPayrollToSheets(payrollReport)
+                syncedToSheets = syncResult["status"] == "success"
 
-            // Return with ID
-            return ResponseEntity.ok(mapOf(
-                "id" to payrollId,
-                "payroll" to response
-            ))
+                if (syncedToSheets) {
+                    println("✅ Successfully synced to Sheets")
+                    println("   Master rows written: ${syncResult["masterRows"]}")
+                    println("   Detail rows written: ${syncResult["detailRows"]}")
+                } else {
+                    println("⚠️  Failed to sync to Sheets: ${syncResult["message"]}")
+                }
+            }
+
+            // 8. Convert to response format
+            val response = createPayrollResponse(payrollReport, clientEvents, syncedToSheets)
+
+            ResponseEntity.ok(response)
 
         } catch (e: Exception) {
-            println("Error calculating payroll: ${e.message}")
-            return ResponseEntity.internalServerError().build()
+            println("❌ Error calculating payroll: ${e.message}")
+            e.printStackTrace()
+            ResponseEntity.internalServerError().build()
         }
     }
 
@@ -124,11 +135,10 @@ class PayrollController(
     fun quickPayrollTest(@PathVariable employeeId: String): ResponseEntity<Map<String, Any>> {
         return try {
             val employee = employeeRepository.findById(employeeId).orElse(null)
-                ?: return ResponseEntity.badRequest().body(mapOf<String, Any>("error" to "Employee not found"))
+                ?: return ResponseEntity.badRequest().body(mapOf("error" to "Employee not found"))
 
             val clients = clientRepository.findByEmployeeId(employeeId)
 
-            // Use current month as test period
             val now = LocalDateTime.now()
             val startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0)
             val endOfMonth = now.withDayOfMonth(now.toLocalDate().lengthOfMonth()).withHour(23).withMinute(59).withSecond(59)
@@ -139,16 +149,20 @@ class PayrollController(
 
             val totalMatchedEvents = clientEvents.values.sumOf { it.size }
 
-            ResponseEntity.ok(mapOf<String, Any>(
-                "employee" to employee.name,
-                "clients" to clients.size,
-                "totalEvents" to events.size,
-                "matchedEvents" to totalMatchedEvents,
-                "period" to "${startOfMonth.toLocalDate()} to ${endOfMonth.toLocalDate()}",
-                "status" to "Ready for payroll calculation"
-            ))
+            ResponseEntity.ok(
+                mapOf(
+                    "employee" to employee.name,
+                    "clients" to clients.size,
+                    "totalEvents" to events.size,
+                    "matchedEvents" to totalMatchedEvents,
+                    "period" to "${startOfMonth.toLocalDate()} to ${endOfMonth.toLocalDate()}",
+                    "status" to "Ready for payroll calculation"
+                )
+            )
         } catch (e: Exception) {
-            ResponseEntity.internalServerError().body(mapOf<String, Any>("error" to (e.message ?: "Unknown error")))
+            ResponseEntity.internalServerError().body(
+                mapOf("error" to (e.message ?: "Unknown error"))
+            )
         }
     }
 
@@ -191,7 +205,11 @@ class PayrollController(
         )
     }
 
-    private fun createPayrollResponse(report: PayrollReport, clientEvents: Map<String, List<CalendarEvent>>): PayrollResponse {
+    private fun createPayrollResponse(
+        report: PayrollReport,
+        clientEvents: Map<String, List<CalendarEvent>>,
+        syncedToSheets: Boolean
+    ): PayrollResponse {
         val clientBreakdown = report.entries.map { entry ->
             val events = clientEvents[entry.clientName] ?: emptyList()
             val eventDetails = events.filter { event ->
@@ -200,7 +218,7 @@ class PayrollController(
                 EventDetail(
                     date = event.startTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
                     time = event.startTime.format(DateTimeFormatter.ofPattern("HH:mm")),
-                    duration = "1h", // Assuming 1 hour sessions
+                    duration = "1h",
                     status = when {
                         event.isCancelled && event.isPendingPayment -> "pending_payment"
                         event.isCancelled -> "cancelled"
@@ -237,11 +255,16 @@ class PayrollController(
                 companyEarnings = report.totalCompanyEarnings
             ),
             clientBreakdown = clientBreakdown,
-            generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
+            syncedToSheets = syncedToSheets
         )
     }
 
-    private fun createEmptyPayrollResponse(employee: Employee, startDate: LocalDateTime, endDate: LocalDateTime): PayrollResponse {
+    private fun createEmptyPayrollResponse(
+        employee: Employee,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime
+    ): PayrollResponse {
         return PayrollResponse(
             employee = EmployeeInfo(
                 id = employee.id,
@@ -256,7 +279,8 @@ class PayrollController(
                 companyEarnings = 0.0
             ),
             clientBreakdown = emptyList(),
-            generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
+            syncedToSheets = false
         )
     }
 }
