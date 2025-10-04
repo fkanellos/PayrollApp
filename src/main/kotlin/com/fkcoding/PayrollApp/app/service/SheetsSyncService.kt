@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter
  * - Validation before write
  * - Rollback on failure
  * - Insert at top (newest first)
+ * - NOW WITH PERIOD START/END DATES!
  */
 @Service
 class SheetsSyncService(
@@ -87,7 +88,8 @@ class SheetsSyncService(
             val existingClientDetails = if (existingPayroll != null) {
                 sheetsService.findExistingClientDetails(
                     employeeName = payrollReport.employee.name,
-                    period = period
+                    periodStart = periodStart,
+                    periodEnd = periodEnd
                 )
             } else {
                 emptyList()
@@ -184,11 +186,13 @@ class SheetsSyncService(
             }
             println("   ✅ Old details deleted")
 
-            // 3️⃣ Insert new client details στην κορυφή
+            // 3️⃣ Insert new client details στην κορυφή - WITH PERIOD DATES!
             println("   3️⃣ Inserting ${clientDetailRows.size} new client detail rows...")
             detailsInserted = sheetsService.insertClientDetailsAtTop(
                 calculationDate = calculationDate,
                 employeeName = employeeName,
+                periodStartDate = periodStart,
+                periodEndDate = periodEnd,
                 period = period,
                 clientDetails = clientDetailRows
             )
@@ -262,11 +266,13 @@ class SheetsSyncService(
             }
             println("   ✅ Master inserted")
 
-            // 2️⃣ Insert Client Details στην κορυφή
+            // 2️⃣ Insert Client Details στην κορυφή - WITH PERIOD DATES!
             println("   2️⃣ Inserting ${clientDetailRows.size} client detail rows...")
             detailsInserted = sheetsService.insertClientDetailsAtTop(
                 calculationDate = calculationDate,
                 employeeName = employeeName,
+                periodStartDate = periodStart,
+                periodEndDate = periodEnd,
                 period = period,
                 clientDetails = clientDetailRows
             )
@@ -340,6 +346,7 @@ class SheetsSyncService(
 
     /**
      * 🧪 Test: Γράφει sample data για testing
+     * 🔴 UPDATED: Με Period Start/End dates!
      */
     fun writeSampleData(): Map<String, Any> {
         return try {
@@ -358,7 +365,7 @@ class SheetsSyncService(
                 notes = "Sample Data"
             )
 
-            // Sample client details
+            // Sample client details - WITH DATES!
             val sampleClients = listOf(
                 ClientDetailRow("Κωνσταντίνος Κουρμούζης", 4, 50.0, 80.0, 120.0, 200.0),
                 ClientDetailRow("Μαρία Κουτίβα", 6, 50.0, 120.0, 180.0, 300.0),
@@ -368,6 +375,8 @@ class SheetsSyncService(
             val detailsSuccess = sheetsService.insertClientDetailsAtTop(
                 calculationDate = LocalDateTime.now().format(dateTimeFormatter),
                 employeeName = "Αγγελική Γκουντοπούλου",
+                periodStartDate = "22/09/2025",
+                periodEndDate = "03/10/2025",
                 period = "22/09/2025 - 03/10/2025",
                 clientDetails = sampleClients
             )

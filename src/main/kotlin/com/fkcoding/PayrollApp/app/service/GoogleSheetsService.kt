@@ -19,11 +19,13 @@ import org.springframework.core.io.ResourceLoader
 import org.springframework.stereotype.Service
 import java.io.File
 import java.io.InputStreamReader
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * Google Sheets Service - 3 Tab Structure
  * 1. MASTER_PAYROLL - Summary rows
- * 2. CLIENT_DETAILS - Detailed breakdown
+ * 2. CLIENT_DETAILS - Detailed breakdown (NOW WITH PERIOD DATES!)
  * 3. MONTHLY_STATS - Auto-calculated formulas
  */
 @Service
@@ -150,11 +152,14 @@ class GoogleSheetsService(
     }
 
     /**
-     * 📊 CLIENT_DETAILS: Γράφει N rows (1 per client)
+     * 📊 CLIENT_DETAILS: Γράφει N rows (1 per client) - NOW WITH PERIOD DATES!
+     * 🔴 UPDATED: Τώρα γράφει 11 columns αντί για 9
      */
     fun writeClientDetails(
         calculationDate: String,
         employeeName: String,
+        periodStartDate: String,
+        periodEndDate: String,
         period: String,
         clientDetails: List<ClientDetailRow>
     ): Boolean {
@@ -165,6 +170,8 @@ class GoogleSheetsService(
                 listOf(
                     calculationDate,
                     employeeName,
+                    periodStartDate,
+                    periodEndDate,
                     period,
                     client.clientName,
                     client.sessions,
@@ -176,7 +183,7 @@ class GoogleSheetsService(
             }
 
             val body = ValueRange().setValues(values)
-            val range = "$detailsSheetName!A:I"
+            val range = "$detailsSheetName!A:K"  // 🔴 UPDATED: A:I → A:K
 
             service.spreadsheets().values()
                 .append(spreadsheetId, range, body)
@@ -190,6 +197,74 @@ class GoogleSheetsService(
         } catch (e: Exception) {
             println("❌ Error writing client details: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * 🔧 HELPER METHOD: Direct write χωρίς upsert logic
+     * Για backward compatibility όταν καλείται από PayrollController
+     */
+    fun directWritePayroll(
+        payrollReport: PayrollReport
+    ): Map<String, Any> {
+        return try {
+            val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            val dateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+            val calculationDate = LocalDateTime.now().format(dateTimeFormatter)
+            val periodStart = payrollReport.periodStart.format(dateFormatter)
+            val periodEnd = payrollReport.periodEnd.format(dateFormatter)
+            val period = "$periodStart - $periodEnd"
+
+            // Write master summary
+            val masterSuccess = writeMasterSummary(
+                calculationDate = calculationDate,
+                employeeName = payrollReport.employee.name,
+                periodStart = periodStart,
+                periodEnd = periodEnd,
+                totalSessions = payrollReport.totalSessions,
+                totalRevenue = payrollReport.totalRevenue,
+                employeeEarnings = payrollReport.totalEmployeeEarnings,
+                companyEarnings = payrollReport.totalCompanyEarnings
+            )
+
+            // Prepare client details
+            val clientDetailRows = payrollReport.entries.map { entry ->
+                ClientDetailRow(
+                    clientName = entry.clientName,
+                    sessions = entry.sessionsCount,
+                    pricePerSession = entry.clientPrice,
+                    employeeShare = entry.employeeEarnings,
+                    companyShare = entry.companyEarnings,
+                    totalRevenue = entry.totalRevenue
+                )
+            }
+
+            // Write client details WITH DATES!
+            val detailsSuccess = writeClientDetails(
+                calculationDate = calculationDate,
+                employeeName = payrollReport.employee.name,
+                periodStartDate = periodStart,  // 🆕 NEW!
+                periodEndDate = periodEnd,      // 🆕 NEW!
+                period = period,
+                clientDetails = clientDetailRows
+            )
+
+            mapOf(
+                "status" to "success",
+                "masterWritten" to masterSuccess,
+                "detailsWritten" to detailsSuccess,
+                "totalSessions" to payrollReport.totalSessions,
+                "totalRevenue" to payrollReport.totalRevenue
+            )
+
+        } catch (e: Exception) {
+            mapOf(
+                "status" to "error",
+                "message" to (e.message ?: "Unknown error"),
+                "masterWritten" to false,
+                "detailsWritten" to false
+            )
         }
     }
 
@@ -281,24 +356,26 @@ class GoogleSheetsService(
             service.spreadsheets().batchUpdate(spreadsheetId, batchUpdateRequest).execute()
             println("✅ Created sheet: $detailsSheetName")
 
-            // Add headers
+            // 🔴 UPDATED HEADERS - NOW 11 COLUMNS!
             val headers = listOf(
                 listOf(
-                    "Calculation Date",
-                    "Employee Name",
-                    "Period",
-                    "Client Name",
-                    "Sessions",
-                    "Price/Session",
-                    "Employee Share",
-                    "Company Share",
-                    "Total Revenue"
+                    "Calculation Date",    // A
+                    "Employee Name",        // B
+                    "Period Start Date",    // C 🆕 NEW!
+                    "Period End Date",      // D 🆕 NEW!
+                    "Period",              // E
+                    "Client Name",         // F
+                    "Sessions",            // G
+                    "Price/Session",       // H
+                    "Employee Share",      // I
+                    "Company Share",       // J
+                    "Total Revenue"        // K
                 )
             )
 
             val body = ValueRange().setValues(headers)
             service.spreadsheets().values()
-                .update(spreadsheetId, "$detailsSheetName!A1:I1", body)
+                .update(spreadsheetId, "$detailsSheetName!A1:K1", body)  // 🔴 UPDATED: A1:I1 → A1:K1
                 .setValueInputOption("USER_ENTERED")
                 .execute()
 
@@ -502,15 +579,17 @@ class GoogleSheetsService(
 
     /**
      * 🔍 Βρίσκει client detail rows για συγκεκριμένο payroll
+     * 🔴 UPDATED: Τώρα ελέγχει columns C & D για Period Start/End
      */
     fun findExistingClientDetails(
         employeeName: String,
-        period: String
+        periodStart: String,
+        periodEnd: String
     ): List<Int> {
         return try {
-            println("🔍 Searching for existing client details: $employeeName ($period)")
+            println("🔍 Searching for existing client details: $employeeName ($periodStart - $periodEnd)")
 
-            val range = "$detailsSheetName!A2:I"
+            val range = "$detailsSheetName!A2:K"  // 🔴 UPDATED: A2:I → A2:K
             val response = service.spreadsheets().values()
                 .get(spreadsheetId, range)
                 .execute()
@@ -520,12 +599,15 @@ class GoogleSheetsService(
             val matchingRows = mutableListOf<Int>()
 
             values.forEachIndexed { index, row ->
-                if (row.size >= 3) {
-                    // Columns: [0]=CalcDate, [1]=Employee, [2]=Period
+                if (row.size >= 4) {
+                    // [0]=CalcDate, [1]=Employee, [2]=PeriodStart, [3]=PeriodEnd
                     val rowEmployee = row[1].toString()
-                    val rowPeriod = row[2].toString()
+                    val rowPeriodStart = if (row.size > 2) row[2].toString() else ""
+                    val rowPeriodEnd = if (row.size > 3) row[3].toString() else ""
 
-                    if (rowEmployee == employeeName && rowPeriod == period) {
+                    if (rowEmployee == employeeName &&
+                        rowPeriodStart == periodStart &&
+                        rowPeriodEnd == periodEnd) {
                         matchingRows.add(index + 2) // +2 for header + 0-index
                     }
                 }
@@ -695,11 +777,14 @@ class GoogleSheetsService(
     }
 
     /**
-     * 📤 INSERT client details στην κορυφή
+     * 📤 INSERT client details στην κορυφή - NOW WITH PERIOD DATES!
+     * 🔴 UPDATED: Γράφει 11 columns αντί για 9
      */
     fun insertClientDetailsAtTop(
         calculationDate: String,
         employeeName: String,
+        periodStartDate: String,
+        periodEndDate: String,
         period: String,
         clientDetails: List<ClientDetailRow>
     ): Boolean {
@@ -724,11 +809,12 @@ class GoogleSheetsService(
             val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(insertRequest))
             service.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
 
-            // 2. Write data
             val values = clientDetails.map { client ->
                 listOf(
                     calculationDate,
                     employeeName,
+                    periodStartDate,
+                    periodEndDate,
                     period,
                     client.clientName,
                     client.sessions,
@@ -740,7 +826,7 @@ class GoogleSheetsService(
             }
 
             val body = ValueRange().setValues(values)
-            val range = "$detailsSheetName!A2:I${1 + clientDetails.size}"
+            val range = "$detailsSheetName!A2:K${1 + clientDetails.size}"  // 🔴 UPDATED: I → K
 
             service.spreadsheets().values()
                 .update(spreadsheetId, range, body)
@@ -759,6 +845,7 @@ class GoogleSheetsService(
 
 /**
  * Data class για client detail row
+ * 🔴 NO CHANGES NEEDED - Still the same fields
  */
 data class ClientDetailRow(
     val clientName: String,
@@ -768,6 +855,7 @@ data class ClientDetailRow(
     val companyShare: Double,
     val totalRevenue: Double
 )
+
 /**
  * Data class για client από Sheets
  */
@@ -793,7 +881,6 @@ data class PayrollSheetEntry(
     val companyEarnings: Double,
     val generatedAt: String
 )
-
 
 /**
  * Data class για existing payroll record
