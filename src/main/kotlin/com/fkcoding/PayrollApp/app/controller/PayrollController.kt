@@ -58,6 +58,13 @@ data class EventDetail(
     val colorId: String?
 )
 
+
+// 🆕 ADD THIS DATA CLASS
+data class PayrollCalculationResponse(
+    val id: String,
+    val payroll: PayrollResponse
+)
+
 @RestController
 @RequestMapping("/payroll")
 @CrossOrigin(origins = ["http://localhost:3000", "*"])
@@ -66,34 +73,37 @@ class PayrollController(
     private val clientRepository: ClientRepository,
     private val googleCalendarService: GoogleCalendarService,
     private val payrollService: PayrollCalculationService,
-    private val sheetsSyncService: SheetsSyncService
+    private val sheetsSyncService: SheetsSyncService,
+    private val payrollCacheService: PayrollCacheService,
+    private val sheetsService: GoogleSheetsService
 ) {
 
     @PostMapping("/calculate")
-    fun calculatePayroll(@RequestBody request: PayrollRequest): ResponseEntity<PayrollResponse> {
+    fun calculatePayroll(@RequestBody request: PayrollRequest): ResponseEntity<PayrollCalculationResponse> {
         return try {
             println("📊 Calculating payroll for employee: ${request.employeeId}")
 
-            // 1. Get employee
+            // 1-6: Same as before (employee, dates, clients, events, filtering, calculation)
             val employee = employeeRepository.findById(request.employeeId).orElse(null)
                 ?: return ResponseEntity.badRequest().build()
 
-            // 2. Parse dates
             val startDate = LocalDateTime.parse(request.startDate)
             val endDate = LocalDateTime.parse(request.endDate)
 
-            // 3. Get clients (from Database - loaded από JSON files)
             val clients = clientRepository.findByEmployeeId(request.employeeId)
             if (clients.isEmpty()) {
                 println("⚠️  No clients found in database - returning empty payroll")
-                return ResponseEntity.ok(createEmptyPayrollResponse(employee, startDate, endDate))
+                val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
+                val id = payrollCacheService.store(emptyResponse)  // Store even empty
+                return ResponseEntity.ok(PayrollCalculationResponse(id, emptyResponse))
             }
 
-            // 4. Get calendar events
             val events = googleCalendarService.getEventsForPeriod(employee.calendarId, startDate, endDate)
             if (events.isEmpty()) {
                 println("⚠️  No calendar events found - returning empty payroll")
-                return ResponseEntity.ok(createEmptyPayrollResponse(employee, startDate, endDate))
+                val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
+                val id = payrollCacheService.store(emptyResponse)
+                return ResponseEntity.ok(PayrollCalculationResponse(id, emptyResponse))
             }
 
             // 5. Filter events by client names
@@ -122,13 +132,206 @@ class PayrollController(
             // 8. Convert to response format
             val response = createPayrollResponse(payrollReport, clientEvents, syncedToSheets)
 
-            ResponseEntity.ok(response)
+            // 🆕 9. CACHE AND WRAP WITH ID
+            val payrollId = payrollCacheService.store(response)
+            val wrappedResponse = PayrollCalculationResponse(
+                id = payrollId,
+                payroll = response
+            )
+
+            println("✅ Payroll calculated and cached with ID: $payrollId")
+            ResponseEntity.ok(wrappedResponse)
 
         } catch (e: Exception) {
             println("❌ Error calculating payroll: ${e.message}")
             e.printStackTrace()
             ResponseEntity.internalServerError().build()
         }
+    }
+
+    /**
+     * 📤 Manual sync existing payroll to Google Sheets
+     * POST /payroll/{id}/sync-to-sheets
+     */
+    @PostMapping("/{id}/sync-to-sheets")
+    fun syncPayrollToSheets(@PathVariable id: String): ResponseEntity<Map<String, Any>> {
+        return try {
+            println("📤 Manual sync request for payroll ID: $id")
+
+            // 1. Retrieve cached payroll
+            val cached = payrollCacheService.retrieve(id)
+                ?: return ResponseEntity.notFound().build()
+
+            println("✅ Found cached payroll for: ${cached.data.employee.name}")
+
+            // 2. Convert PayrollResponse → PayrollReport
+            val payrollReport = convertResponseToReport(cached.data)
+
+            // 3. Check if already exists
+            val periodParts = cached.data.period.split(" - ")
+            if (periodParts.size != 2) {
+                return ResponseEntity.badRequest().body(
+                    mapOf(
+                        "status" to "error",
+                        "message" to "Invalid period format in cached payroll"
+                    ) as Map<String, Any>  // 🔴 EXPLICIT CAST!
+                )
+            }
+
+            val existingPayroll = sheetsService.findExistingPayroll(
+                employeeName = cached.data.employee.name,
+                periodStart = periodParts[0],
+                periodEnd = periodParts[1]
+            )
+
+            // 4. Sync to Sheets
+            val syncResult = sheetsSyncService.syncPayrollToSheets(payrollReport)
+
+            // 5. Return result με extra info
+            val mode = if (existingPayroll != null) "updated" else "inserted"
+
+            ResponseEntity.ok(
+                mapOf(
+                    "status" to syncResult["status"],
+                    "message" to syncResult["message"],
+                    "mode" to mode,
+                    "employeeName" to cached.data.employee.name,
+                    "period" to cached.data.period,
+                    "totalSessions" to cached.data.summary.totalSessions,
+                    "totalRevenue" to cached.data.summary.totalRevenue,
+                    "masterWritten" to syncResult["masterWritten"],
+                    "detailsWritten" to syncResult["detailsWritten"],
+                    "masterRows" to syncResult.getOrDefault("masterRows", 0),
+                    "detailRows" to syncResult.getOrDefault("detailRows", 0)
+                ) as Map<String, Any>  // 🔴 EXPLICIT CAST!
+            )
+
+        } catch (e: Exception) {
+            println("❌ Error syncing payroll to Sheets: ${e.message}")
+            e.printStackTrace()
+
+            ResponseEntity.internalServerError().body(
+                mapOf(
+                    "status" to "error",
+                    "message" to (e.message ?: "Unknown error during sync")
+                ) as Map<String, Any>  // 🔴 EXPLICIT CAST!
+            )
+        }
+    }
+
+    /**
+     * 🔍 Check if payroll exists in Sheets (για confirmation dialog)
+     * GET /payroll/{id}/check-sheets
+     */
+    @GetMapping("/{id}/check-sheets")
+    fun checkPayrollInSheets(@PathVariable id: String): ResponseEntity<Map<String, Any>> {
+        return try {
+            println("🔍 Checking if payroll exists in Sheets: $id")
+
+            // Retrieve cached payroll
+            val cached = payrollCacheService.retrieve(id)
+                ?: return ResponseEntity.notFound().build()
+
+            // Parse period
+            val periodParts = cached.data.period.split(" - ")
+            if (periodParts.size != 2) {
+                return ResponseEntity.badRequest().body(
+                    mapOf("error" to "Invalid period format") as Map<String, Any>  // 🔴 CAST!
+                )
+            }
+
+            // Check existence
+            val existingPayroll = sheetsService.findExistingPayroll(
+                employeeName = cached.data.employee.name,
+                periodStart = periodParts[0],
+                periodEnd = periodParts[1]
+            )
+
+            val existingDetails = if (existingPayroll != null) {
+                sheetsService.findExistingClientDetails(
+                    employeeName = cached.data.employee.name,
+                    periodStart = periodParts[0],
+                    periodEnd = periodParts[1]
+                )
+            } else {
+                emptyList()
+            }
+
+            ResponseEntity.ok(
+                mapOf(
+                    "exists" to (existingPayroll != null),
+                    "employeeName" to cached.data.employee.name,
+                    "period" to cached.data.period,
+                    "existingMasterRow" to existingPayroll?.rowIndex,
+                    "existingDetailRows" to existingDetails.size,
+                    "action" to if (existingPayroll != null) "update" else "insert",
+                    "message" to if (existingPayroll != null) {
+                        "Υπάρχει ήδη payroll για αυτήν την περίοδο. Θα ενημερωθεί."
+                    } else {
+                        "Νέο payroll - θα προστεθεί στο Sheets."
+                    }
+                ) as Map<String, Any>  // 🔴 EXPLICIT CAST!
+            )
+
+        } catch (e: Exception) {
+            println("❌ Error checking Sheets: ${e.message}")
+
+            ResponseEntity.internalServerError().body(
+                mapOf(
+                    "error" to (e.message ?: "Unknown error"),
+                    "exists" to false
+                ) as Map<String, Any>  // 🔴 EXPLICIT CAST!
+            )
+        }
+    }
+
+    /**
+     * 🔧 Helper: Convert PayrollResponse → PayrollReport
+     */
+    private fun convertResponseToReport(response: PayrollResponse): PayrollReport {
+        // Parse dates from period string
+        val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        val periodParts = response.period.split(" - ")
+
+        val periodStart = LocalDateTime.parse(
+            periodParts[0].trim() + " 00:00",
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+        )
+        val periodEnd = LocalDateTime.parse(
+            periodParts[1].trim() + " 23:59",
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+        )
+
+        // Get employee from repository
+        val employee = employeeRepository.findById(response.employee.id).orElseThrow {
+            Exception("Employee not found: ${response.employee.id}")
+        }
+
+        // Convert client breakdown to PayrollEntry
+        val entries = response.clientBreakdown.map { client ->
+            PayrollEntry(
+                clientName = client.clientName,
+                clientPrice = client.pricePerSession,
+                employeePrice = client.employeePricePerSession,
+                companyPrice = client.companyPricePerSession,
+                sessionsCount = client.sessions,
+                totalRevenue = client.totalRevenue,
+                employeeEarnings = client.employeeEarnings,
+                companyEarnings = client.companyEarnings
+            )
+        }
+
+        return PayrollReport(
+            employee = employee,
+            periodStart = periodStart,
+            periodEnd = periodEnd,
+            entries = entries,
+            totalSessions = response.summary.totalSessions,
+            totalRevenue = response.summary.totalRevenue,
+            totalEmployeeEarnings = response.summary.employeeEarnings,
+            totalCompanyEarnings = response.summary.companyEarnings,
+            generatedAt = LocalDateTime.now()
+        )
     }
 
     @GetMapping("/quick-test/{employeeId}")
