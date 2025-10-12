@@ -4,6 +4,10 @@
     "name": "Αγγελική Γκουντοπούλου",
     "email": "psy.gkountopoulou@gmail.com",
     "calendar_id": "96d9bcafcffca5c5eac796237641ac51b6c4b48599c93ac05bf59594a29d3f79@group.calendar.google.com",
-    "color": "#2196F3"
+    "color": "#2196F3",
+    "supervision_enabled": true,
+    "supervision_price": 0.0,
+    "supervision_employee_price": 0.0,
+    "supervision_company_price": 0.0
   }
 }

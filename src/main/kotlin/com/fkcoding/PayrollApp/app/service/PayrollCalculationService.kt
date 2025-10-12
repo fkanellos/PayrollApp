@@ -28,6 +28,15 @@ data class PayrollReport(
     val generatedAt: LocalDateTime = LocalDateTime.now()
 )
 
+// Data class για supervision config
+data class SupervisionConfig(
+    val enabled: Boolean,
+    val price: Double,
+    val employeePrice: Double,
+    val companyPrice: Double,
+    val keywords: List<String> = listOf("Εποπτεία", "Supervision")
+)
+
 @Service
 class PayrollCalculationService {
 
@@ -36,7 +45,8 @@ class PayrollCalculationService {
         clients: List<Client>,
         clientEvents: Map<String, List<CalendarEvent>>,
         periodStart: LocalDateTime,
-        periodEnd: LocalDateTime
+        periodEnd: LocalDateTime,
+        supervisionConfig: SupervisionConfig? = null // 🆕 NEW!
     ): PayrollReport {
 
         val entries = mutableListOf<PayrollEntry>()
@@ -47,10 +57,15 @@ class PayrollCalculationService {
 
         val clientLookup = clients.associateBy { it.name }
 
+        // 1. Process client events (existing logic)
         clientEvents.forEach { (clientName, events) ->
+            // Skip if this is the supervision keyword
+            if (supervisionConfig != null && clientName in supervisionConfig.keywords) {
+                return@forEach // Handle separately below
+            }
+
             val client = clientLookup[clientName] ?: return@forEach
 
-            // Filter events for the period and exclude cancelled (unless pending payment)
             val validEvents = events.filter { event ->
                 event.startTime.isAfter(periodStart) &&
                         event.startTime.isBefore(periodEnd) &&
@@ -79,6 +94,43 @@ class PayrollCalculationService {
                 totalRevenue += clientRevenue
                 totalEmployeeEarnings += employeeEarnings
                 totalCompanyEarnings += companyEarnings
+            }
+        }
+
+        // 2. 🆕 NEW: Process supervision sessions
+        if (supervisionConfig != null) {
+            supervisionConfig.keywords.forEach { keyword ->
+                val supervisionEvents = clientEvents[keyword] ?: emptyList()
+
+                val validSupervisionEvents = supervisionEvents.filter { event ->
+                    event.startTime.isAfter(periodStart) &&
+                            event.startTime.isBefore(periodEnd) &&
+                            !event.isCancelled
+                }
+
+                if (validSupervisionEvents.isNotEmpty()) {
+                    val sessionsCount = validSupervisionEvents.size
+                    val clientRevenue = sessionsCount * supervisionConfig.price
+                    val employeeEarnings = sessionsCount * supervisionConfig.employeePrice
+                    val companyEarnings = sessionsCount * supervisionConfig.companyPrice
+
+                    val entry = PayrollEntry(
+                        clientName = "Εποπτεία (Supervision)",
+                        clientPrice = supervisionConfig.price,
+                        employeePrice = supervisionConfig.employeePrice,
+                        companyPrice = supervisionConfig.companyPrice,
+                        sessionsCount = sessionsCount,
+                        totalRevenue = clientRevenue,
+                        employeeEarnings = employeeEarnings,
+                        companyEarnings = companyEarnings
+                    )
+
+                    entries.add(entry)
+                    totalSessions += sessionsCount
+                    totalRevenue += clientRevenue
+                    totalEmployeeEarnings += employeeEarnings
+                    totalCompanyEarnings += companyEarnings
+                }
             }
         }
 

@@ -1,6 +1,7 @@
 package com.fkcoding.PayrollApp.app.service
 
 import com.google.api.client.auth.oauth2.Credential
+import com.google.api.client.auth.oauth2.TokenResponseException
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow
@@ -71,9 +72,14 @@ class GoogleCalendarService(
 
     private fun getCredentials(httpTransport: NetHttpTransport): Credential {
         try {
-            // Load client secrets using ResourceLoader
-            val resource = resourceLoader.getResource(credentialsFilePath)
+            // 1️⃣ Δημιούργησε folder αν δεν υπάρχει (first time)
+            val tokensDir = File(TOKENS_DIRECTORY_PATH)
+            if (!tokensDir.exists()) {
+                println("📁 Creating tokens directory: ${tokensDir.absolutePath}")
+                tokensDir.mkdirs()
+            }
 
+            val resource = resourceLoader.getResource(credentialsFilePath)
             if (!resource.exists()) {
                 throw RuntimeException("Credentials file not found at: $credentialsFilePath")
             }
@@ -87,15 +93,49 @@ class GoogleCalendarService(
             val flow = GoogleAuthorizationCodeFlow.Builder(
                 httpTransport, JSON_FACTORY, clientSecrets, SCOPES
             )
-                .setDataStoreFactory(FileDataStoreFactory(File(TOKENS_DIRECTORY_PATH)))
+                .setDataStoreFactory(FileDataStoreFactory(tokensDir))
                 .setAccessType("offline")
+                .setApprovalPrompt("force")
                 .build()
 
             val receiver = LocalServerReceiver.Builder().setPort(8888).build()
-            return AuthorizationCodeInstalledApp(flow, receiver).authorize("user")
+
+            return try {
+                println("🔐 Loading credentials...")
+                val credential = AuthorizationCodeInstalledApp(flow, receiver).authorize("user")
+
+                // 2️⃣ Auto-refresh αν είναι κοντά στη λήξη
+                if (credential.expiresInSeconds != null && credential.expiresInSeconds!! <= 300) {
+                    println("⚠️  Token expiring in ${credential.expiresInSeconds}s, refreshing...")
+                    val refreshed = credential.refreshToken()
+                    if (refreshed) {
+                        println("✅ Token refreshed successfully")
+                    }
+                } else {
+                    println("✅ Token is valid (expires in ${credential.expiresInSeconds}s)")
+                }
+
+                credential
+
+            } catch (e: TokenResponseException) {
+                // 3️⃣ Token completely invalid - διαγράφουμε ΜΟΝΟ το file
+                println("❌ Token invalid/expired: ${e.message}")
+                println("🔄 Requesting fresh authorization...")
+
+                // ✅ ΣΩΣΤΟ: Διαγράφουμε ΜΟΝΟ το file, ΟΧΙ το folder
+                File(tokensDir, "StoredCredential").delete()
+                // ❌ ΛΑΘΟΣ: tokensDir.deleteRecursively() - NO!
+
+                println("⚠️  Please authorize in the browser window...")
+                AuthorizationCodeInstalledApp(flow, receiver).authorize("user")
+
+            } catch (e: Exception) {
+                println("❌ Unexpected error: ${e.message}")
+                throw RuntimeException("Failed to authorize: ${e.message}", e)
+            }
 
         } catch (e: Exception) {
-            throw RuntimeException("Credentials file not found at: $credentialsFilePath", e)
+            throw RuntimeException("Failed to load credentials: ${e.message}", e)
         }
     }
 
@@ -160,7 +200,11 @@ class GoogleCalendarService(
     }
 
     private fun isGreyCancellation(colorId: String?): Boolean {
-        return colorId == "8" || colorId == "9"
+        return colorId == "8"
+    }
+
+    private fun isRedCancellation(colorId: String?, summary: String): Boolean {
+        return colorId == "11" && !isSupervision(summary)
     }
 
     fun filterEventsByClientNames(
@@ -175,6 +219,10 @@ class GoogleCalendarService(
             if (matches.isNotEmpty()) {
                 val clientName = matches.first()
                 clientEvents[clientName]?.add(event)
+
+                if (matches.size > 1) {
+                    println("⚠️  Multiple matches for '${event.title}': $matches")
+                }
             } else {
                 unmatchedEvents.add(event)
             }
@@ -192,36 +240,70 @@ class GoogleCalendarService(
         return clientEvents.mapValues { it.value.toList() }
     }
 
-    private fun findClientMatches(title: String, clientNames: List<String>): List<String> {
+    /**
+     * Enhanced matching με:
+     * - Reversed name matching (Επώνυμο Όνομα)
+     * - Partial surname matching
+     * - Accent-insensitive matching
+     * - Special keywords (Εποπτεία)
+     */
+    private fun findClientMatches(
+        title: String,
+        clientNames: List<String>,
+        specialKeywords: List<String> = emptyList()
+    ): List<String> {
         if (title.isBlank()) return emptyList()
 
         val titleLower = title.lowercase().trim()
+            .replace("ά", "α").replace("έ", "ε")
+            .replace("ή", "η").replace("ί", "ι")
+            .replace("ό", "ο").replace("ύ", "υ")
+            .replace("ώ", "ω")
+
         val matches = mutableListOf<String>()
 
+        // 1. Check special keywords first (e.g., Εποπτεία)
+        for (keyword in specialKeywords) {
+            if (keyword.lowercase() in titleLower) {
+                matches.add(keyword)
+                return matches // Return immediately for special keywords
+            }
+        }
+
+        // 2. Match against client names
         for (clientName in clientNames) {
             if (clientName.isBlank()) continue
 
             val clientLower = clientName.lowercase()
-            val nameParts = clientLower.split(" ")
+                .replace("ά", "α").replace("έ", "ε")
+                .replace("ή", "η").replace("ί", "ι")
+                .replace("ό", "ο").replace("ύ", "υ")
+                .replace("ώ", "ω")
 
-            if (nameParts.size < 2) {
-                if (clientLower in titleLower) {
-                    matches.add(clientName)
-                }
-                continue
-            }
+            val nameParts = clientLower.split(" ").filter { it.isNotBlank() }
 
+            // Test 1: Full name exact match
             if (clientLower in titleLower) {
                 matches.add(clientName)
                 continue
             }
 
+            if (nameParts.size < 2) {
+                // Single name - try partial match
+                if (nameParts.first() in titleLower) {
+                    matches.add(clientName)
+                }
+                continue
+            }
+
+            // Test 2: Reversed name (Επώνυμο Όνομα)
             val reversedName = "${nameParts.last()} ${nameParts.first()}"
             if (reversedName in titleLower) {
                 matches.add(clientName)
                 continue
             }
 
+            // Test 3: Surname only (must be word boundary)
             val surname = nameParts.last()
             if (surname.length > 3) {
                 val regex = "\\b${Regex.escape(surname)}\\b".toRegex()
@@ -231,11 +313,24 @@ class GoogleCalendarService(
                 }
             }
 
+            // Test 4: First name only (must be word boundary)
             val firstName = nameParts.first()
-            if (firstName.length > 4) {
+            if (firstName.length > 3) {
                 val regex = "\\b${Regex.escape(firstName)}\\b".toRegex()
                 if (regex.find(titleLower) != null) {
                     matches.add(clientName)
+                    continue
+                }
+            }
+
+            // Test 5: Handle names with multiple parts (e.g., "Γαλομυτάκου Σταυρούλα - Ραπανάκης Γιώργος")
+            if ("-" in clientName) {
+                val parts = clientName.split("-").map { it.trim().lowercase() }
+                for (part in parts) {
+                    if (part in titleLower) {
+                        matches.add(clientName)
+                        break
+                    }
                 }
             }
         }
@@ -258,5 +353,22 @@ class GoogleCalendarService(
             println("❌ Error fetching calendar list: ${e.message}")
             emptyList()
         }
+    }
+    private fun isSupervision(summary: String): Boolean {
+        val normalized = normalizeGreekText(summary)
+        return normalized == "εποπτεια"
+    }
+
+    private fun normalizeGreekText(text: String): String {
+        return text.lowercase().trim()
+            .replace("ά", "α")
+            .replace("έ", "ε")
+            .replace("ή", "η")
+            .replace("ί", "ι")
+            .replace("ό", "ο")
+            .replace("ύ", "υ")
+            .replace("ώ", "ω")
+            .replace("ΐ", "ι")
+            .replace("ΰ", "υ")
     }
 }

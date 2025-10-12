@@ -116,8 +116,8 @@
   "lambros_saliveros": {
     "name": "Λάμπρος Σαλίβερος",
     "price": 40.0,
-    "employee_price": 18.0,
-    "company_price": 22.0
+    "employee_price": 20.0,
+    "company_price": 20.0
   },
   "emmanouela_kalogeropoulou": {
     "name": "Εμμανουέλα Καλογεροπούλου",
@@ -691,6 +691,84 @@
   },
   "georgia_zafeiri": {
     "name": "Γεωργία Ζαφείρη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "giannari_eirini": {
+    "name": "Γιάνναρη Ειρήνη",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "lazaridou_maria": {
+    "name": "Λαζαρίδου Μαρία",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "maria_pantazi": {
+    "name": "Μαρία Πανταζή",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "souli_erilda": {
+    "name": "Σούλι Ερίλντα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "xansko_noelia": {
+    "name": "Χανσκο Νοέλια",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "rapti_anastasia": {
+    "name": "Ράπτη Ανάσταση",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "kliafas_stelios": {
+    "name": "Κλιάφας Στέλιος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "stiefni_klodian": {
+    "name": "Στιέφνι Κλοντιάν",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "kouvoutsaki_katerina": {
+    "name": "Κουβουτσάκη Κατερίνα",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "karanisa_kyriaki": {
+    "name": "Καρανίσα Κυριακή",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "anninou_vivian_spyridakis_nikos": {
+    "name": "Αννινου Βίβιαν - Σπυριδάκης Νίκος",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "masgana_anastasia": {
+    "name": "Μασγανά Αναστασία",
+    "price": 50.0,
+    "employee_price": 20.0,
+    "company_price": 30.0
+  },
+  "alvanou_thaleia": {
+    "name": "Αλβανού Θάλεια",
     "price": 50.0,
     "employee_price": 20.0,
     "company_price": 30.0
