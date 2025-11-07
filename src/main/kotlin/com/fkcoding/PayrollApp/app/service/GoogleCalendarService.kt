@@ -16,11 +16,13 @@ import com.google.api.services.calendar.Calendar
 import com.google.api.services.calendar.CalendarScopes
 import com.google.api.services.calendar.model.Events
 import jakarta.annotation.PostConstruct
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.io.ResourceLoader
 import org.springframework.stereotype.Service
 import java.io.File
 import java.io.InputStreamReader
+import java.net.SocketTimeoutException
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -43,40 +45,58 @@ class GoogleCalendarService(
     companion object {
         private const val APPLICATION_NAME = "Payroll System"
         private val JSON_FACTORY: JsonFactory = GsonFactory.getDefaultInstance()
-        private const val TOKENS_DIRECTORY_PATH = "tokens"
+
+        // ✅ ABSOLUTE PATH
+        private val TOKENS_DIRECTORY_PATH = File(
+            System.getProperty("user.home"),
+            ".credentials/payroll-app"
+        )
+
         private val SCOPES = listOf(
             CalendarScopes.CALENDAR_READONLY,
-            "https://www.googleapis.com/auth/spreadsheets",  // ADD THIS
-            "https://www.googleapis.com/auth/drive.file"      // ADD THIS (for folder access)
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive.readonly"  // ✅ Πρόσθεσε Drive access!
         )
+
+        private val logger = LoggerFactory.getLogger(GoogleCalendarService::class.java)
     }
 
     @Value("\${google.calendar.credentials.path:classpath:data/credentials.json}")
     private lateinit var credentialsFilePath: String
 
-    private lateinit var service: Calendar
+    private var service: Calendar? = null  // ✅ Nullable!
+    private var isInitialized = false
 
     @PostConstruct
     fun initialize() {
         try {
+            logger.info("📁 Tokens directory: ${TOKENS_DIRECTORY_PATH.absolutePath}")
             val httpTransport = GoogleNetHttpTransport.newTrustedTransport()
             service = Calendar.Builder(httpTransport, JSON_FACTORY, getCredentials(httpTransport))
                 .setApplicationName(APPLICATION_NAME)
                 .build()
-            println("✅ Google Calendar service initialized successfully")
+            isInitialized = true
+            logger.info("✅ Google Calendar service initialized successfully")
+        } catch (e: SocketTimeoutException) {
+            logger.error("❌ Network timeout while initializing Google Calendar. App will continue without Calendar integration.")
+            logger.error("   To fix: Check internet connection or delete tokens: rm -rf ~/.credentials/payroll-app")
+            isInitialized = false
+            // ✅ DON'T THROW - Let app continue!
         } catch (e: Exception) {
-            println("❌ Failed to initialize Google Calendar service: ${e.message}")
-            throw e
+            logger.error("❌ Failed to initialize Google Calendar service: ${e.message}", e)
+            logger.warn("⚠️ App will continue without Calendar integration")
+            isInitialized = false
+            // ✅ DON'T THROW - Let app continue!
         }
     }
 
     private fun getCredentials(httpTransport: NetHttpTransport): Credential {
         try {
-            // 1️⃣ Δημιούργησε folder αν δεν υπάρχει (first time)
-            val tokensDir = File(TOKENS_DIRECTORY_PATH)
-            if (!tokensDir.exists()) {
-                println("📁 Creating tokens directory: ${tokensDir.absolutePath}")
-                tokensDir.mkdirs()
+            // 1️⃣ Create folder if needed
+            if (!TOKENS_DIRECTORY_PATH.exists()) {
+                logger.info("📁 Creating tokens directory: ${TOKENS_DIRECTORY_PATH.absolutePath}")
+                TOKENS_DIRECTORY_PATH.mkdirs()
             }
 
             val resource = resourceLoader.getResource(credentialsFilePath)
@@ -89,48 +109,65 @@ class GoogleCalendarService(
                 InputStreamReader(resource.inputStream)
             )
 
-            // Build flow and trigger user authorization request
             val flow = GoogleAuthorizationCodeFlow.Builder(
                 httpTransport, JSON_FACTORY, clientSecrets, SCOPES
             )
-                .setDataStoreFactory(FileDataStoreFactory(tokensDir))
+                .setDataStoreFactory(FileDataStoreFactory(TOKENS_DIRECTORY_PATH))
                 .setAccessType("offline")
-                .setApprovalPrompt("force")
                 .build()
 
-            val receiver = LocalServerReceiver.Builder().setPort(8888).build()
+            val receiver = LocalServerReceiver.Builder()
+                .setPort(8889)
+                .build()
 
             return try {
-                println("🔐 Loading credentials...")
+                logger.info("🔐 Loading credentials...")
                 val credential = AuthorizationCodeInstalledApp(flow, receiver).authorize("user")
 
-                // 2️⃣ Auto-refresh αν είναι κοντά στη λήξη
-                if (credential.expiresInSeconds != null && credential.expiresInSeconds!! <= 300) {
-                    println("⚠️  Token expiring in ${credential.expiresInSeconds}s, refreshing...")
-                    val refreshed = credential.refreshToken()
-                    if (refreshed) {
-                        println("✅ Token refreshed successfully")
-                    }
+                if (credential.refreshToken != null) {
+                    logger.info("✅ Refresh token found! Credentials will persist.")
                 } else {
-                    println("✅ Token is valid (expires in ${credential.expiresInSeconds}s)")
+                    logger.warn("⚠️ No refresh token!")
+                }
+
+                // ✅ Try refresh with timeout protection
+                try {
+                    if (credential.expiresInSeconds != null && credential.expiresInSeconds!! <= 300) {
+                        logger.info("⚠️ Token expiring in ${credential.expiresInSeconds}s, refreshing...")
+
+                        // Set timeout for refresh
+                        val refreshed = credential.refreshToken()
+                        if (refreshed) {
+                            logger.info("✅ Token refreshed successfully")
+                        }
+                    } else {
+                        logger.info("✅ Token is valid (expires in ${credential.expiresInSeconds}s)")
+                    }
+                } catch (e: SocketTimeoutException) {
+                    logger.warn("⚠️ Token refresh timed out - will use existing token")
+                    // Continue with existing token
                 }
 
                 credential
 
             } catch (e: TokenResponseException) {
-                // 3️⃣ Token completely invalid - διαγράφουμε ΜΟΝΟ το file
-                println("❌ Token invalid/expired: ${e.message}")
-                println("🔄 Requesting fresh authorization...")
+                logger.error("❌ Token invalid/expired: ${e.message}")
+                logger.info("🔄 Deleting invalid token...")
 
-                // ✅ ΣΩΣΤΟ: Διαγράφουμε ΜΟΝΟ το file, ΟΧΙ το folder
-                File(tokensDir, "StoredCredential").delete()
-                // ❌ ΛΑΘΟΣ: tokensDir.deleteRecursively() - NO!
+                val storedCredFile = File(TOKENS_DIRECTORY_PATH, "StoredCredential")
+                if (storedCredFile.exists()) {
+                    storedCredFile.delete()
+                    logger.info("🗑️ Deleted invalid token file")
+                }
 
-                println("⚠️  Please authorize in the browser window...")
+                logger.warn("⚠️ Please authorize in the browser window...")
                 AuthorizationCodeInstalledApp(flow, receiver).authorize("user")
 
+            } catch (e: SocketTimeoutException) {
+                logger.error("❌ Network timeout during authorization")
+                throw RuntimeException("Network timeout - check internet connection", e)
             } catch (e: Exception) {
-                println("❌ Unexpected error: ${e.message}")
+                logger.error("❌ Unexpected error during authorization", e)
                 throw RuntimeException("Failed to authorize: ${e.message}", e)
             }
 
@@ -139,16 +176,32 @@ class GoogleCalendarService(
         }
     }
 
+    /**
+     * ✅ Check if service is available before using
+     */
+    private fun ensureInitialized(): Boolean {
+        if (!isInitialized || service == null) {
+            logger.warn("⚠️ Google Calendar service not available")
+            return false
+        }
+        return true
+    }
+
     fun getEventsForPeriod(
         calendarId: String,
         startDate: LocalDateTime,
         endDate: LocalDateTime
     ): List<CalendarEvent> {
+        if (!ensureInitialized()) {
+            logger.warn("⚠️ Cannot fetch events - Calendar service not initialized")
+            return emptyList()
+        }
+
         return try {
             val timeMin = DateTime(startDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
             val timeMax = DateTime(endDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
 
-            val events: Events = service.events().list(calendarId)
+            val events: Events = service!!.events().list(calendarId)
                 .setTimeMin(timeMin)
                 .setTimeMax(timeMax)
                 .setOrderBy("startTime")
@@ -194,7 +247,7 @@ class GoogleCalendarService(
             } ?: emptyList()
 
         } catch (e: Exception) {
-            println("❌ Error fetching calendar events: ${e.message}")
+            logger.error("❌ Error fetching calendar events: ${e.message}", e)
             emptyList()
         }
     }
@@ -221,7 +274,7 @@ class GoogleCalendarService(
                 clientEvents[clientName]?.add(event)
 
                 if (matches.size > 1) {
-                    println("⚠️  Multiple matches for '${event.title}': $matches")
+                    logger.warn("⚠️ Multiple matches for '${event.title}': $matches")
                 }
             } else {
                 unmatchedEvents.add(event)
@@ -232,21 +285,14 @@ class GoogleCalendarService(
         val cancelledCount = events.count { it.isCancelled }
         val pendingPaymentCount = events.count { it.isPendingPayment }
 
-        println("🎯 Matched events: $matchedCount")
-        println("❌ Cancelled events: $cancelledCount")
-        println("⏳ Pending payment events: $pendingPaymentCount")
-        println("❓ Unmatched events: ${unmatchedEvents.size}")
+        logger.info("🎯 Matched events: $matchedCount")
+        logger.info("❌ Cancelled events: $cancelledCount")
+        logger.info("⏳ Pending payment events: $pendingPaymentCount")
+        logger.info("❓ Unmatched events: ${unmatchedEvents.size}")
 
         return clientEvents.mapValues { it.value.toList() }
     }
 
-    /**
-     * Enhanced matching με:
-     * - Reversed name matching (Επώνυμο Όνομα)
-     * - Partial surname matching
-     * - Accent-insensitive matching
-     * - Special keywords (Εποπτεία)
-     */
     private fun findClientMatches(
         title: String,
         clientNames: List<String>,
@@ -262,15 +308,13 @@ class GoogleCalendarService(
 
         val matches = mutableListOf<String>()
 
-        // 1. Check special keywords first (e.g., Εποπτεία)
         for (keyword in specialKeywords) {
             if (keyword.lowercase() in titleLower) {
                 matches.add(keyword)
-                return matches // Return immediately for special keywords
+                return matches
             }
         }
 
-        // 2. Match against client names
         for (clientName in clientNames) {
             if (clientName.isBlank()) continue
 
@@ -282,28 +326,24 @@ class GoogleCalendarService(
 
             val nameParts = clientLower.split(" ").filter { it.isNotBlank() }
 
-            // Test 1: Full name exact match
             if (clientLower in titleLower) {
                 matches.add(clientName)
                 continue
             }
 
             if (nameParts.size < 2) {
-                // Single name - try partial match
                 if (nameParts.first() in titleLower) {
                     matches.add(clientName)
                 }
                 continue
             }
 
-            // Test 2: Reversed name (Επώνυμο Όνομα)
             val reversedName = "${nameParts.last()} ${nameParts.first()}"
             if (reversedName in titleLower) {
                 matches.add(clientName)
                 continue
             }
 
-            // Test 3: Surname only (must be word boundary)
             val surname = nameParts.last()
             if (surname.length > 3) {
                 val regex = "\\b${Regex.escape(surname)}\\b".toRegex()
@@ -313,7 +353,6 @@ class GoogleCalendarService(
                 }
             }
 
-            // Test 4: First name only (must be word boundary)
             val firstName = nameParts.first()
             if (firstName.length > 3) {
                 val regex = "\\b${Regex.escape(firstName)}\\b".toRegex()
@@ -323,7 +362,6 @@ class GoogleCalendarService(
                 }
             }
 
-            // Test 5: Handle names with multiple parts (e.g., "Γαλομυτάκου Σταυρούλα - Ραπανάκης Γιώργος")
             if ("-" in clientName) {
                 val parts = clientName.split("-").map { it.trim().lowercase() }
                 for (part in parts) {
@@ -339,8 +377,12 @@ class GoogleCalendarService(
     }
 
     fun getCalendarList(): List<Map<String, Any>> {
+        if (!ensureInitialized()) {
+            return emptyList()
+        }
+
         return try {
-            val calendarList = service.calendarList().list().execute()
+            val calendarList = service!!.calendarList().list().execute()
             calendarList.items?.map { calendar ->
                 mapOf(
                     "id" to (calendar.id ?: ""),
@@ -350,10 +392,11 @@ class GoogleCalendarService(
                 )
             } ?: emptyList()
         } catch (e: Exception) {
-            println("❌ Error fetching calendar list: ${e.message}")
+            logger.error("❌ Error fetching calendar list: ${e.message}", e)
             emptyList()
         }
     }
+
     private fun isSupervision(summary: String): Boolean {
         val normalized = normalizeGreekText(summary)
         return normalized == "εποπτεια"

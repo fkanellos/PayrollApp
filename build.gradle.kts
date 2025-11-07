@@ -53,6 +53,10 @@ dependencies {
     implementation(libs.google.api.services.sheets)
     implementation(libs.google.api.services.drive)
 
+    // Apache POI για Excel parsing
+    implementation("org.apache.poi:poi:5.2.3")
+    implementation("org.apache.poi:poi-ooxml:5.2.3")
+
     // Testing - Using catalog ✅
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.kotlin.test.junit5)
