@@ -8,22 +8,21 @@ import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("/api/employees")
-@CrossOrigin(origins = ["http://localhost:3000"])
 class EmployeeController(
     private val employeeRepository: EmployeeRepository,
     private val clientRepository: ClientRepository
 ) {
-    
+
     @GetMapping
     fun getAllEmployees(): List<Employee> {
         return employeeRepository.findAll()
     }
-    
+
     @GetMapping("/{id}")
     fun getEmployee(@PathVariable id: String): Employee? {
         return employeeRepository.findById(id).orElse(null)
     }
-    
+
     @GetMapping("/{id}/clients")
     fun getEmployeeClients(@PathVariable id: String): List<Client> {
         return clientRepository.findByEmployeeId(id)
