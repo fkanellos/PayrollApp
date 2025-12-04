@@ -74,9 +74,9 @@ class ExcelDataService(
             val httpRequest = httpTransport.createRequestFactory(credential)
                 .buildGetRequest(GenericUrl(exportUrl))
 
-            // Set timeouts
-            httpRequest.connectTimeout = 30000  // 30s
-            httpRequest.readTimeout = 30000     // 30s
+            // Set timeouts (increased for large Excel files)
+            httpRequest.connectTimeout = 60000  // 60s (was 30s)
+            httpRequest.readTimeout = 120000    // 120s = 2min (was 30s)
 
             // Execute
             logger.info("⏱️ Downloading Excel...")
