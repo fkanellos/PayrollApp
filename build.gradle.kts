@@ -53,9 +53,11 @@ dependencies {
     implementation(libs.google.api.services.sheets)
     implementation(libs.google.api.services.drive)
 
-    // Apache POI για Excel parsing
-    implementation("org.apache.poi:poi:5.2.3")
-    implementation("org.apache.poi:poi-ooxml:5.2.3")
+    // OpenAPI / Swagger UI Documentation - Using catalog ✅
+    implementation(libs.springdoc.openapi.ui)
+
+    // Validation (for @Valid annotations) - Using catalog ✅
+    implementation(libs.spring.boot.starter.validation)
 
     // Testing - Using catalog ✅
     testImplementation(libs.spring.boot.starter.test)
