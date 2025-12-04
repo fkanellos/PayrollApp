@@ -105,7 +105,7 @@ class PayrollCalculationService {
                 val validSupervisionEvents = supervisionEvents.filter { event ->
                     event.startTime.isAfter(periodStart) &&
                             event.startTime.isBefore(periodEnd) &&
-                            !event.isCancelled
+                            (!event.isCancelled || event.isPendingPayment)  // ✅ Same logic as regular clients!
                 }
 
                 if (validSupervisionEvents.isNotEmpty()) {
