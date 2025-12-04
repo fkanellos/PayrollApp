@@ -59,10 +59,6 @@ dependencies {
     // Validation (for @Valid annotations) - Using catalog ✅
     implementation(libs.spring.boot.starter.validation)
 
-    // Apache POI για Excel parsing
-    implementation("org.apache.poi:poi:5.2.3")
-    implementation("org.apache.poi:poi-ooxml:5.2.3")
-
     // Testing - Using catalog ✅
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.kotlin.test.junit5)
