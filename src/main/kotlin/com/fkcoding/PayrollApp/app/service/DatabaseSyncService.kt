@@ -6,6 +6,7 @@ import com.fkcoding.PayrollApp.app.repository.ClientRepository
 import com.fkcoding.PayrollApp.app.repository.EmployeeRepository
 import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -24,11 +25,22 @@ class DatabaseSyncService(
         private val logger = LoggerFactory.getLogger(DatabaseSyncService::class.java)
     }
 
+    @Value("\${database.sync.enabled:false}")
+    private var autoSyncEnabled: Boolean = false
+
     /**
-     * 🔄 Auto-sync on startup
+     * 🔄 Auto-sync on startup (configurable)
+     * Set database.sync.enabled=true in application.properties to enable
      */
     @PostConstruct
     fun syncOnStartup() {
+        if (!autoSyncEnabled) {
+            logger.info("⏸️  Database auto-sync DISABLED (database.sync.enabled=false)")
+            logger.info("   💡 To enable: Set database.sync.enabled=true in application.properties")
+            logger.info("   💡 Or use: POST /api/database-sync/sync for manual sync")
+            return
+        }
+
         try {
             logger.info("💾 Syncing Excel data to database...")
             syncEmployeesAndClients()
