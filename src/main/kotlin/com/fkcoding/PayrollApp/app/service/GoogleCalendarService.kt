@@ -39,7 +39,8 @@ data class CalendarEvent(
 
 @Service
 class GoogleCalendarService(
-    private val resourceLoader: ResourceLoader
+    private val resourceLoader: ResourceLoader,
+    private val clientMatchingService: ClientMatchingService
 ) {
 
     companion object {
@@ -64,6 +65,12 @@ class GoogleCalendarService(
 
     @Value("\${google.calendar.credentials.path:classpath:data/credentials.json}")
     private lateinit var credentialsFilePath: String
+
+    @Value("\${google.calendar.color.grey.cancelled:8}")
+    private lateinit var greyCancelledColorId: String
+
+    @Value("\${google.calendar.color.red.cancelled:11}")
+    private lateinit var redCancelledColorId: String
 
     private var service: Calendar? = null  // ✅ Nullable!
     private var isInitialized = false
@@ -253,11 +260,11 @@ class GoogleCalendarService(
     }
 
     private fun isGreyCancellation(colorId: String?): Boolean {
-        return colorId == "8"
+        return colorId == greyCancelledColorId
     }
 
     private fun isRedCancellation(colorId: String?, summary: String): Boolean {
-        return colorId == "11" && !isSupervision(summary)
+        return colorId == redCancelledColorId && !isSupervision(summary)
     }
 
     fun filterEventsByClientNames(
@@ -268,7 +275,7 @@ class GoogleCalendarService(
         val unmatchedEvents = mutableListOf<CalendarEvent>()
 
         for (event in events) {
-            val matches = findClientMatches(event.title, clientNames)
+            val matches = clientMatchingService.findClientMatches(event.title, clientNames)
             if (matches.isNotEmpty()) {
                 val clientName = matches.first()
                 clientEvents[clientName]?.add(event)
@@ -293,88 +300,6 @@ class GoogleCalendarService(
         return clientEvents.mapValues { it.value.toList() }
     }
 
-    private fun findClientMatches(
-        title: String,
-        clientNames: List<String>,
-        specialKeywords: List<String> = emptyList()
-    ): List<String> {
-        if (title.isBlank()) return emptyList()
-
-        val titleLower = title.lowercase().trim()
-            .replace("ά", "α").replace("έ", "ε")
-            .replace("ή", "η").replace("ί", "ι")
-            .replace("ό", "ο").replace("ύ", "υ")
-            .replace("ώ", "ω")
-
-        val matches = mutableListOf<String>()
-
-        for (keyword in specialKeywords) {
-            if (keyword.lowercase() in titleLower) {
-                matches.add(keyword)
-                return matches
-            }
-        }
-
-        for (clientName in clientNames) {
-            if (clientName.isBlank()) continue
-
-            val clientLower = clientName.lowercase()
-                .replace("ά", "α").replace("έ", "ε")
-                .replace("ή", "η").replace("ί", "ι")
-                .replace("ό", "ο").replace("ύ", "υ")
-                .replace("ώ", "ω")
-
-            val nameParts = clientLower.split(" ").filter { it.isNotBlank() }
-
-            if (clientLower in titleLower) {
-                matches.add(clientName)
-                continue
-            }
-
-            if (nameParts.size < 2) {
-                if (nameParts.first() in titleLower) {
-                    matches.add(clientName)
-                }
-                continue
-            }
-
-            val reversedName = "${nameParts.last()} ${nameParts.first()}"
-            if (reversedName in titleLower) {
-                matches.add(clientName)
-                continue
-            }
-
-            val surname = nameParts.last()
-            if (surname.length > 3) {
-                val regex = "\\b${Regex.escape(surname)}\\b".toRegex()
-                if (regex.find(titleLower) != null) {
-                    matches.add(clientName)
-                    continue
-                }
-            }
-
-            val firstName = nameParts.first()
-            if (firstName.length > 3) {
-                val regex = "\\b${Regex.escape(firstName)}\\b".toRegex()
-                if (regex.find(titleLower) != null) {
-                    matches.add(clientName)
-                    continue
-                }
-            }
-
-            if ("-" in clientName) {
-                val parts = clientName.split("-").map { it.trim().lowercase() }
-                for (part in parts) {
-                    if (part in titleLower) {
-                        matches.add(clientName)
-                        break
-                    }
-                }
-            }
-        }
-
-        return matches
-    }
 
     fun getCalendarList(): List<Map<String, Any>> {
         if (!ensureInitialized()) {

@@ -2,6 +2,7 @@ package com.fkcoding.PayrollApp.app.controller
 
 import com.fkcoding.PayrollApp.app.service.GoogleCalendarService
 import com.fkcoding.PayrollApp.app.service.CalendarEvent
+import com.fkcoding.PayrollApp.app.service.ClientMatchingService
 import com.fkcoding.PayrollApp.app.repository.ClientRepository
 import com.fkcoding.PayrollApp.app.repository.EmployeeRepository
 import org.springframework.web.bind.annotation.*
@@ -14,7 +15,8 @@ import java.time.format.DateTimeFormatter
 class DebugController(
     private val googleCalendarService: GoogleCalendarService,
     private val clientRepository: ClientRepository,
-    private val employeeRepository: EmployeeRepository
+    private val employeeRepository: EmployeeRepository,
+    private val clientMatchingService: ClientMatchingService
 ) {
 
     /**
@@ -220,84 +222,19 @@ class DebugController(
             val clients = clientRepository.findByEmployeeId(employeeId)
             val clientNames = clients.map { it.name }
 
-            val matches = findClientMatchesDebug(title, clientNames)
+            // Use ClientMatchingService for matching
+            val result = clientMatchingService.findClientMatchesDebug(title, clientNames)
 
             mapOf(
                 "title" to title,
                 "clientNames" to clientNames,
-                "matches" to matches,
-                "matchCount" to matches.size,
-                "matched" to matches.isNotEmpty()
+                "result" to result
             )
         } catch (e: Exception) {
             mapOf("error" to (e.message ?: "Unknown error"))
         }
     }
 
-    private fun findClientMatchesDebug(title: String, clientNames: List<String>): List<String> {
-        if (title.isBlank()) return emptyList()
-
-        val titleLower = title.lowercase().trim()
-        val matches = mutableListOf<String>()
-
-        println("\n🔍 Testing title: '$title'")
-        println("   Normalized: '$titleLower'")
-
-        for (clientName in clientNames) {
-            if (clientName.isBlank()) continue
-
-            val clientLower = clientName.lowercase()
-            val nameParts = clientLower.split(" ")
-
-            println("\n   Testing against client: '$clientName'")
-
-            // Test 1: Full name match
-            if (clientLower in titleLower) {
-                println("      ✅ MATCH: Full name found in title")
-                matches.add(clientName)
-                continue
-            }
-
-            if (nameParts.size < 2) {
-                println("      ⚠️  Single name, no match")
-                continue
-            }
-
-            // Test 2: Reversed name
-            val reversedName = "${nameParts.last()} ${nameParts.first()}"
-            if (reversedName in titleLower) {
-                println("      ✅ MATCH: Reversed name found")
-                matches.add(clientName)
-                continue
-            }
-
-            // Test 3: Surname only
-            val surname = nameParts.last()
-            if (surname.length > 3) {
-                val regex = "\\b${Regex.escape(surname)}\\b".toRegex()
-                if (regex.find(titleLower) != null) {
-                    println("      ✅ MATCH: Surname '$surname' found")
-                    matches.add(clientName)
-                    continue
-                }
-            }
-
-            // Test 4: First name only
-            val firstName = nameParts.first()
-            if (firstName.length > 4) {
-                val regex = "\\b${Regex.escape(firstName)}\\b".toRegex()
-                if (regex.find(titleLower) != null) {
-                    println("      ✅ MATCH: First name '$firstName' found")
-                    matches.add(clientName)
-                    continue
-                }
-            }
-
-            println("      ❌ NO MATCH")
-        }
-
-        return matches
-    }
 }
 
 // Helper
