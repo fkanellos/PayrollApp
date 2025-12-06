@@ -228,7 +228,7 @@ class GoogleCalendarService(
                     LocalDateTime.parse(event.end.date.toString() + "T23:59:59")
                 }
 
-                val isCancelled = event.status == "cancelled"
+                val isCancelled = event.status == "cancelled" || isRedCancellation(event.colorId, event.summary ?: "")
                 val colorId = event.colorId
                 val isPendingPayment = isCancelled && isGreyCancellation(colorId)
 
