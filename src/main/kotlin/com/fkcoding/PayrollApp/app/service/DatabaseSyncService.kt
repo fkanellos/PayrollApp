@@ -95,25 +95,36 @@ class DatabaseSyncService(
             }
         }
 
-        // Sync clients
+        // Delete orphaned clients (exist in DB but not in Excel)
+        val excelClientKeys = clients.map { "${it.employeeId}:${it.name}" }.toSet()
+        val dbClients = clientRepository.findAll()
+        val orphanedClients = dbClients.filter { dbClient ->
+            "${dbClient.employeeId}:${dbClient.name}" !in excelClientKeys
+        }
+        if (orphanedClients.isNotEmpty()) {
+            logger.info("🗑️  Deleting ${orphanedClients.size} orphaned clients...")
+            clientRepository.deleteAll(orphanedClients)
+        }
+
+        // Sync clients (match by employeeId + name, not by ID)
         clients.forEach { client ->
             try {
-                val existing = clientRepository.findById(client.id)
+                // Find existing client by employeeId and name (not by ID!)
+                val existing = clientRepository.findByEmployeeId(client.employeeId)
+                    .find { it.name == client.name }
 
-                if (existing.isPresent) {
-                    // Update
-                    val updated = existing.get().copy(
-                        name = client.name,
+                if (existing != null) {
+                    // Update existing client (preserve database ID)
+                    val updated = existing.copy(
                         price = client.price,
                         employeePrice = client.employeePrice,
                         companyPrice = client.companyPrice,
-                        employeeId = client.employeeId,
                         pendingPayment = client.pendingPayment
                     )
                     clientRepository.save(updated)
                     clientsUpdated++
                 } else {
-                    // Insert
+                    // Insert new client
                     clientRepository.save(client)
                     clientsSaved++
                 }
