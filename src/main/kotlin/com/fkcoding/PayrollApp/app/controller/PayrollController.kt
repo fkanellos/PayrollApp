@@ -54,19 +54,26 @@ data class ClientPayrollDetail(
     val pricePerSession: Double,
     val employeePricePerSession: Double,
     val companyPricePerSession: Double,
-    val sessions: Int,
-    val totalRevenue: Double,
+    val sessions: Int,                   // Total sessions (completed + pending + paid from previous)
+    val totalRevenue: Double,            // Only PAID sessions
     val employeeEarnings: Double,
     val companyEarnings: Double,
-    val eventDetails: List<EventDetail>
+    val eventDetails: List<EventDetail>,
+    val completedSessions: Int = 0,      // Completed in current period
+    val pendingSessions: Int = 0,        // Grey cancelled in current (not paid yet)
+    val paidPendingCount: Int = 0,       // Pending from previous that got paid
+    val unresolvedPendingCount: Int = 0  // Pending from previous that still owe
 )
 
 data class EventDetail(
     val date: String,
     val time: String,
     val duration: String,
-    val status: String,
-    val colorId: String?
+    val status: String,                  // "completed", "pending_payment", "cancelled", "paid_for_pending"
+    val colorId: String?,
+    val isPending: Boolean = false,      // Is this a pending payment (grey in current)?
+    val paidForPending: Boolean = false, // Did this session pay for a previous pending?
+    val pendingDate: String? = null      // If paidForPending, the date of the pending it paid for
 )
 
 
@@ -343,7 +350,11 @@ class PayrollController(
                 sessionsCount = client.sessions,
                 totalRevenue = client.totalRevenue,
                 employeeEarnings = client.employeeEarnings,
-                companyEarnings = client.companyEarnings
+                companyEarnings = client.companyEarnings,
+                completedSessions = client.completedSessions,
+                pendingSessions = client.pendingSessions,
+                paidPendingCount = client.paidPendingCount,
+                unresolvedPendingCount = client.unresolvedPendingCount
             )
         }
 
@@ -489,19 +500,49 @@ class PayrollController(
     ): PayrollResponse {
         val clientBreakdown = report.entries.map { entry ->
             val events = clientEvents[entry.clientName] ?: emptyList()
-            val eventDetails = events.filter { event ->
+
+            // Get events in current period
+            val eventsInPeriod = events.filter { event ->
                 event.startTime >= report.periodStart && event.startTime <= report.periodEnd
-            }.map { event ->
+            }
+
+            // Get pending from previous period (to mark which sessions paid for them)
+            val previousPeriodStart = report.periodStart.minusWeeks(1)
+            val pendingFromPrevious = events.filter { event ->
+                event.startTime >= previousPeriodStart &&
+                event.startTime < report.periodStart &&
+                event.isCancelled &&
+                event.isPendingPayment
+            }
+
+            // Get completed sessions (to mark first N as paying for pending)
+            val completedInPeriod = eventsInPeriod.filter { !it.isCancelled }
+
+            // Create event details
+            val eventDetails = eventsInPeriod.mapIndexed { index, event ->
+                // Check if this is a completed session that paid for a pending
+                val paidForPending = !event.isCancelled &&
+                                     index < pendingFromPrevious.size &&
+                                     index < completedInPeriod.size
+
+                val pendingDate = if (paidForPending && pendingFromPrevious.isNotEmpty()) {
+                    pendingFromPrevious[index].startTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                } else null
+
                 EventDetail(
                     date = event.startTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
                     time = event.startTime.format(DateTimeFormatter.ofPattern("HH:mm")),
                     duration = "1h",
                     status = when {
+                        paidForPending -> "paid_for_pending"
                         event.isCancelled && event.isPendingPayment -> "pending_payment"
                         event.isCancelled -> "cancelled"
                         else -> "completed"
                     },
-                    colorId = event.colorId
+                    colorId = event.colorId,
+                    isPending = event.isCancelled && event.isPendingPayment,
+                    paidForPending = paidForPending,
+                    pendingDate = pendingDate
                 )
             }
 
@@ -514,7 +555,11 @@ class PayrollController(
                 totalRevenue = entry.totalRevenue,
                 employeeEarnings = entry.employeeEarnings,
                 companyEarnings = entry.companyEarnings,
-                eventDetails = eventDetails
+                eventDetails = eventDetails,
+                completedSessions = entry.completedSessions,
+                pendingSessions = entry.pendingSessions,
+                paidPendingCount = entry.paidPendingCount,
+                unresolvedPendingCount = entry.unresolvedPendingCount
             )
         }
 
