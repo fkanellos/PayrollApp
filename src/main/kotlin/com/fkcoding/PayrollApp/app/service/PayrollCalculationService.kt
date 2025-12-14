@@ -16,6 +16,39 @@ data class PayrollEntry(
     val companyEarnings: Double
 )
 
+data class EventTracking(
+    val totalEvents: Int,
+    val matchedEvents: Int,
+    val unmatchedEvents: List<UnmatchedEvent>,
+    val cancelledGreyEvents: List<CancelledEvent>,  // Pending payment
+    val cancelledRedEvents: List<CancelledEvent>,    // Will NOT be paid
+    val supervisionEvents: List<SupervisionEvent>,
+    val emptyTitleEvents: Int  // Availability hours etc.
+)
+
+data class UnmatchedEvent(
+    val title: String,
+    val date: String,
+    val time: String,
+    val colorId: String?,
+    val status: String
+)
+
+data class CancelledEvent(
+    val title: String,
+    val date: String,
+    val time: String,
+    val colorId: String,
+    val type: String  // "grey" or "red"
+)
+
+data class SupervisionEvent(
+    val date: String,
+    val time: String,
+    val counted: Boolean,  // If it was included in payroll
+    val reason: String?    // Why it wasn't counted (if applicable)
+)
+
 data class PayrollReport(
     val employee: Employee,
     val periodStart: LocalDateTime,
@@ -25,6 +58,7 @@ data class PayrollReport(
     val totalRevenue: Double,
     val totalEmployeeEarnings: Double,
     val totalCompanyEarnings: Double,
+    val eventTracking: EventTracking,  // 🆕 NEW!
     val generatedAt: LocalDateTime = LocalDateTime.now()
 )
 
@@ -43,10 +77,11 @@ class PayrollCalculationService {
     fun calculatePayroll(
         employee: Employee,
         clients: List<Client>,
+        allEvents: List<CalendarEvent>,  // 🆕 All events (for tracking)
         clientEvents: Map<String, List<CalendarEvent>>,
         periodStart: LocalDateTime,
         periodEnd: LocalDateTime,
-        supervisionConfig: SupervisionConfig? = null // 🆕 NEW!
+        supervisionConfig: SupervisionConfig? = null
     ): PayrollReport {
 
         val entries = mutableListOf<PayrollEntry>()
@@ -55,7 +90,15 @@ class PayrollCalculationService {
         var totalEmployeeEarnings = 0.0
         var totalCompanyEarnings = 0.0
 
+        // Track all events for comprehensive reporting
+        val unmatchedEvents = mutableListOf<UnmatchedEvent>()
+        val cancelledGreyEvents = mutableListOf<CancelledEvent>()
+        val cancelledRedEvents = mutableListOf<CancelledEvent>()
+        val supervisionEventsList = mutableListOf<SupervisionEvent>()
+        var emptyTitleCount = 0
+
         val clientLookup = clients.associateBy { it.name }
+        val matchedEventIds = clientEvents.values.flatten().map { it.id }.toSet()
 
         // 1. Process client events (existing logic)
         clientEvents.forEach { (clientName, events) ->
@@ -134,6 +177,84 @@ class PayrollCalculationService {
             }
         }
 
+        // 3. 🆕 Categorize ALL events for tracking
+        allEvents.forEach { event ->
+            // Skip if empty title (availability hours)
+            if (event.title.isBlank()) {
+                emptyTitleCount++
+                return@forEach
+            }
+
+            // Check if it's a supervision event
+            val isSupervision = supervisionConfig?.keywords?.any {
+                event.title.contains(it, ignoreCase = true)
+            } ?: false
+
+            if (isSupervision) {
+                val counted = event.startTime.isAfter(periodStart) &&
+                              event.startTime.isBefore(periodEnd) &&
+                              (!event.isCancelled || event.isPendingPayment)
+
+                supervisionEventsList.add(SupervisionEvent(
+                    date = event.startTime.toLocalDate().toString(),
+                    time = event.startTime.toLocalTime().toString(),
+                    counted = counted,
+                    reason = when {
+                        event.isCancelled && !event.isPendingPayment -> "Cancelled (red)"
+                        !event.startTime.isAfter(periodStart) ||
+                        !event.startTime.isBefore(periodEnd) -> "Outside period"
+                        else -> null
+                    }
+                ))
+                return@forEach
+            }
+
+            // Track cancelled events by color
+            if (event.isCancelled) {
+                val cancelledEvent = CancelledEvent(
+                    title = event.title,
+                    date = event.startTime.toLocalDate().toString(),
+                    time = event.startTime.toLocalTime().toString(),
+                    colorId = event.colorId ?: "unknown",
+                    type = when {
+                        event.isPendingPayment -> "grey"
+                        else -> "red"
+                    }
+                )
+
+                if (event.isPendingPayment) {
+                    cancelledGreyEvents.add(cancelledEvent)
+                } else {
+                    cancelledRedEvents.add(cancelledEvent)
+                }
+            }
+
+            // Track unmatched events (not matched to any client)
+            if (event.id !in matchedEventIds && !isSupervision) {
+                unmatchedEvents.add(UnmatchedEvent(
+                    title = event.title,
+                    date = event.startTime.toLocalDate().toString(),
+                    time = event.startTime.toLocalTime().toString(),
+                    colorId = event.colorId,
+                    status = when {
+                        event.isCancelled && event.isPendingPayment -> "⏳ Cancelled (will pay next time)"
+                        event.isCancelled -> "❌ Cancelled"
+                        else -> "❓ No client match"
+                    }
+                ))
+            }
+        }
+
+        val eventTracking = EventTracking(
+            totalEvents = allEvents.size,
+            matchedEvents = matchedEventIds.size,
+            unmatchedEvents = unmatchedEvents,
+            cancelledGreyEvents = cancelledGreyEvents,
+            cancelledRedEvents = cancelledRedEvents,
+            supervisionEvents = supervisionEventsList,
+            emptyTitleEvents = emptyTitleCount
+        )
+
         return PayrollReport(
             employee = employee,
             periodStart = periodStart,
@@ -142,7 +263,8 @@ class PayrollCalculationService {
             totalSessions = totalSessions,
             totalRevenue = totalRevenue,
             totalEmployeeEarnings = totalEmployeeEarnings,
-            totalCompanyEarnings = totalCompanyEarnings
+            totalCompanyEarnings = totalCompanyEarnings,
+            eventTracking = eventTracking  // 🆕 Include tracking!
         )
     }
 }

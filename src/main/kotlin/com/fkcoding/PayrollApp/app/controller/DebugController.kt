@@ -235,6 +235,207 @@ class DebugController(
         }
     }
 
+    /**
+     * 🔍 DEBUG: Comprehensive event analysis with full categorization
+     * GET /api/debug/analyze/{employeeId}?weeks=3
+     *
+     * Returns ALL events categorized by:
+     * - Matched vs unmatched (client in DB or not)
+     * - Color (grey=pending payment, red=cancelled, none=completed)
+     * - Type (client session, supervision, empty title/availability)
+     * - Period (within payroll period or outside)
+     */
+    @GetMapping("/analyze/{employeeId}")
+    fun analyzeEvents(
+        @PathVariable employeeId: String,
+        @RequestParam(defaultValue = "3") weeks: Int
+    ): Map<String, Any> {
+        return try {
+            println("\n" + "=".repeat(100))
+            println("🔍 COMPREHENSIVE EVENT ANALYSIS")
+            println("=".repeat(100))
+
+            // 1. Get employee
+            val employee = employeeRepository.findById(employeeId).orElse(null)
+                ?: return mapOf("error" to "Employee not found")
+
+            println("👤 Employee: ${employee.name}")
+            println("📧 Email: ${employee.email}")
+
+            // 2. Get clients
+            val clients = clientRepository.findByEmployeeId(employeeId)
+            val clientNames = clients.map { it.name }
+            println("\n👥 Registered Clients: ${clients.size}")
+
+            // 3. Define period
+            val now = LocalDateTime.now()
+            val weeksAgo = now.minusWeeks(weeks.toLong())
+            val startDate = weeksAgo.withHour(0).withMinute(0).withSecond(0)
+            val endDate = now.withHour(23).withMinute(59).withSecond(59)
+
+            // Payroll period (last 2 weeks)
+            val payrollStart = now.minusWeeks(2).withHour(0).withMinute(0).withSecond(0)
+
+            println("\n📆 Analysis Period: $weeks weeks")
+            println("   Start: ${startDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}")
+            println("   End:   ${endDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}")
+            println("\n💰 Payroll Period (last 2 weeks):")
+            println("   Start: ${payrollStart.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}")
+
+            // 4. Fetch ALL events
+            val allEvents = googleCalendarService.getEventsForPeriod(
+                employee.calendarId,
+                startDate,
+                endDate
+            )
+
+            println("\n📊 TOTAL EVENTS: ${allEvents.size}")
+
+            // 5. Categorize events
+            val matchedEvents = mutableListOf<Map<String, Any>>()
+            val unmatchedEvents = mutableListOf<Map<String, Any>>()
+            val supervisionEvents = mutableListOf<Map<String, Any>>()
+            val emptyTitleEvents = mutableListOf<Map<String, Any>>()
+            val cancelledGreyEvents = mutableListOf<Map<String, Any>>()
+            val cancelledRedEvents = mutableListOf<Map<String, Any>>()
+            val pendingPaymentEvents = mutableListOf<Map<String, Any>>()
+
+            val supervisionKeywords = listOf("Εποπτεία", "Supervision", "εποπτεία", "supervision")
+
+            allEvents.forEach { event ->
+                val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                val inPayrollPeriod = event.startTime.isAfter(payrollStart) && event.startTime.isBefore(endDate)
+
+                val eventData = mapOf(
+                    "id" to event.id,
+                    "title" to event.title,
+                    "date" to event.startTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                    "time" to event.startTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                    "colorId" to (event.colorId ?: "none"),
+                    "isCancelled" to event.isCancelled,
+                    "isPendingPayment" to event.isPendingPayment,
+                    "inPayrollPeriod" to inPayrollPeriod,
+                    "status" to when {
+                        event.isPendingPayment -> "⏳ Pending Payment (Grey)"
+                        event.isCancelled -> "❌ Cancelled (Red)"
+                        else -> "✅ Completed"
+                    }
+                )
+
+                // Empty title
+                if (event.title.isBlank()) {
+                    emptyTitleEvents.add(eventData)
+                    return@forEach
+                }
+
+                // Supervision
+                val isSupervision = supervisionKeywords.any { event.title.contains(it, ignoreCase = true) }
+                if (isSupervision) {
+                    supervisionEvents.add(eventData + mapOf(
+                        "willBePaid" to (inPayrollPeriod && (!event.isCancelled || event.isPendingPayment))
+                    ))
+                    return@forEach
+                }
+
+                // Cancelled events by color
+                if (event.isCancelled) {
+                    if (event.isPendingPayment) {
+                        cancelledGreyEvents.add(eventData)
+                        pendingPaymentEvents.add(eventData)
+                    } else {
+                        cancelledRedEvents.add(eventData)
+                    }
+                }
+
+                // Match to clients
+                val matchedClient = clientNames.find { clientName ->
+                    event.title.contains(clientName, ignoreCase = true)
+                }
+
+                if (matchedClient != null) {
+                    matchedEvents.add(eventData + mapOf(
+                        "clientName" to matchedClient,
+                        "willBePaid" to (inPayrollPeriod && (!event.isCancelled || event.isPendingPayment))
+                    ))
+                } else {
+                    unmatchedEvents.add(eventData + mapOf(
+                        "reason" to "No client match found in database"
+                    ))
+                }
+            }
+
+            // 6. Summary statistics
+            val summary = mapOf(
+                "totalEvents" to allEvents.size,
+                "emptyTitle" to emptyTitleEvents.size,
+                "supervision" to supervisionEvents.size,
+                "matched" to matchedEvents.size,
+                "unmatched" to unmatchedEvents.size,
+                "cancelledGrey" to cancelledGreyEvents.size,
+                "cancelledRed" to cancelledRedEvents.size,
+                "pendingPayment" to pendingPaymentEvents.size,
+                "inPayrollPeriod" to allEvents.count {
+                    it.startTime.isAfter(payrollStart) && it.startTime.isBefore(endDate)
+                },
+                "beforePayrollPeriod" to allEvents.count {
+                    it.startTime.isBefore(payrollStart)
+                }
+            )
+
+            println("\n" + "=".repeat(100))
+            println("📊 SUMMARY")
+            println("=".repeat(100))
+            println("Total Events: ${summary["totalEvents"]}")
+            println("  ✅ Matched to Clients: ${summary["matched"]}")
+            println("  ❓ Unmatched (New Clients?): ${summary["unmatched"]}")
+            println("  🎓 Supervision: ${summary["supervision"]}")
+            println("  📅 Empty Title (Availability): ${summary["emptyTitle"]}")
+            println("  ⏳ Cancelled Grey (Pending Payment): ${summary["cancelledGrey"]}")
+            println("  ❌ Cancelled Red (NOT Paid): ${summary["cancelledRed"]}")
+            println("\nPeriod Breakdown:")
+            println("  💰 In Payroll Period: ${summary["inPayrollPeriod"]}")
+            println("  📆 Before Payroll Period: ${summary["beforePayrollPeriod"]}")
+            println("\n" + "=".repeat(100))
+
+            // Return categorized data
+            mapOf(
+                "employee" to mapOf(
+                    "id" to employee.id,
+                    "name" to employee.name,
+                    "email" to employee.email
+                ),
+                "period" to mapOf(
+                    "weeks" to weeks,
+                    "start" to startDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
+                    "end" to endDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
+                    "payrollStart" to payrollStart.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                ),
+                "summary" to summary,
+                "categorizedEvents" to mapOf(
+                    "matched" to matchedEvents,
+                    "unmatched" to unmatchedEvents,
+                    "supervision" to supervisionEvents,
+                    "emptyTitle" to emptyTitleEvents,
+                    "cancelledGrey" to cancelledGreyEvents,
+                    "cancelledRed" to cancelledRedEvents,
+                    "pendingPayment" to pendingPaymentEvents
+                ),
+                "clients" to clients.map { mapOf(
+                    "name" to it.name,
+                    "price" to it.price
+                )}
+            )
+
+        } catch (e: Exception) {
+            println("\n❌ ERROR: ${e.message}")
+            e.printStackTrace()
+            mapOf(
+                "error" to (e.message ?: "Unknown error"),
+                "stackTrace" to e.stackTraceToString()
+            )
+        }
+    }
+
 }
 
 // Helper
