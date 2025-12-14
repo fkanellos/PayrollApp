@@ -16,11 +16,22 @@ data class PayrollRequest(
     val syncToSheets: Boolean = false  // Option για να γράψει στο Sheets
 )
 
+data class EventTrackingResponse(
+    val totalEvents: Int,
+    val matchedEvents: Int,
+    val unmatchedEvents: List<Map<String, Any>>,
+    val cancelledGrey: List<Map<String, Any>>,
+    val cancelledRed: List<Map<String, Any>>,
+    val supervision: List<Map<String, Any>>,
+    val emptyTitle: Int
+)
+
 data class PayrollResponse(
     val employee: EmployeeInfo,
     val period: String,
     val summary: PayrollSummary,
     val clientBreakdown: List<ClientPayrollDetail>,
+    val eventTracking: EventTrackingResponse,  // 🆕 NEW!
     val generatedAt: String,
     val syncedToSheets: Boolean = false
 )
@@ -98,7 +109,13 @@ class PayrollController(
                 return ResponseEntity.ok(PayrollCalculationResponse(id, emptyResponse))
             }
 
-            val events = googleCalendarService.getEventsForPeriod(employee.calendarId, startDate, endDate)
+            // 🆕 Fetch 3 weeks of events (1 week before + 2 week payroll period)
+            // This allows cross-checking pending payments from previous week
+            val extendedStartDate = startDate.minusWeeks(1)
+            println("📅 Fetching events from ${extendedStartDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))} to ${endDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}")
+            println("📊 Payroll period: ${startDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))} to ${endDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}")
+
+            val events = googleCalendarService.getEventsForPeriod(employee.calendarId, extendedStartDate, endDate)
             if (events.isEmpty()) {
                 println("⚠️  No calendar events found - returning empty payroll")
                 val emptyResponse = createEmptyPayrollResponse(employee, startDate, endDate)
@@ -110,8 +127,17 @@ class PayrollController(
             val clientNames = clients.map { it.name }
             val clientEvents = googleCalendarService.filterEventsByClientNames(events, clientNames)
 
-            // 6. Calculate payroll
-            val payrollReport = payrollService.calculatePayroll(employee, clients, clientEvents, startDate, endDate)
+            // 6. Calculate payroll (🆕 Now passing ALL events for tracking!)
+            val supervisionConfig = SupervisionConfig(
+                enabled = employee.supervisionPrice > 0,
+                price = employee.supervisionPrice,
+                employeePrice = employee.supervisionPrice,
+                companyPrice = 0.0,
+                keywords = listOf("Εποπτεία", "Supervision", "εποπτεία", "supervision")
+            )
+            val payrollReport = payrollService.calculatePayroll(
+                employee, clients, events, clientEvents, startDate, endDate, supervisionConfig
+            )
 
             // 7. Sync to Sheets if requested
             var syncedToSheets = false
@@ -321,6 +347,48 @@ class PayrollController(
             )
         }
 
+        // Convert EventTrackingResponse back to EventTracking
+        val eventTracking = EventTracking(
+            totalEvents = response.eventTracking.totalEvents,
+            matchedEvents = response.eventTracking.matchedEvents,
+            unmatchedEvents = response.eventTracking.unmatchedEvents.map {
+                UnmatchedEvent(
+                    title = it["title"] as String,
+                    date = it["date"] as String,
+                    time = it["time"] as String,
+                    colorId = it["colorId"] as? String,
+                    status = it["status"] as String
+                )
+            },
+            cancelledGreyEvents = response.eventTracking.cancelledGrey.map {
+                CancelledEvent(
+                    title = it["title"] as String,
+                    date = it["date"] as String,
+                    time = it["time"] as String,
+                    colorId = it["colorId"] as String,
+                    type = it["type"] as String
+                )
+            },
+            cancelledRedEvents = response.eventTracking.cancelledRed.map {
+                CancelledEvent(
+                    title = it["title"] as String,
+                    date = it["date"] as String,
+                    time = it["time"] as String,
+                    colorId = it["colorId"] as String,
+                    type = it["type"] as String
+                )
+            },
+            supervisionEvents = response.eventTracking.supervision.map {
+                SupervisionEvent(
+                    date = it["date"] as String,
+                    time = it["time"] as String,
+                    counted = it["counted"] as Boolean,
+                    reason = it["reason"] as? String
+                )
+            },
+            emptyTitleEvents = response.eventTracking.emptyTitle
+        )
+
         return PayrollReport(
             employee = employee,
             periodStart = periodStart,
@@ -330,6 +398,7 @@ class PayrollController(
             totalRevenue = response.summary.totalRevenue,
             totalEmployeeEarnings = response.summary.employeeEarnings,
             totalCompanyEarnings = response.summary.companyEarnings,
+            eventTracking = eventTracking,
             generatedAt = LocalDateTime.now()
         )
     }
@@ -397,6 +466,11 @@ class PayrollController(
         )
     }
 
+    /**
+     * Returns the default payroll period (last 2 weeks)
+     * Note: The system automatically fetches 3 weeks of events (1 week before + 2 week period)
+     * to cross-check pending payments from the previous week and avoid double entries
+     */
     @GetMapping("/default-period")
     fun getDefaultPeriod(): Map<String, String> {
         val today = LocalDateTime.now()
@@ -444,6 +518,48 @@ class PayrollController(
             )
         }
 
+        // 🆕 Build event tracking response
+        val eventTracking = EventTrackingResponse(
+            totalEvents = report.eventTracking.totalEvents,
+            matchedEvents = report.eventTracking.matchedEvents,
+            unmatchedEvents = report.eventTracking.unmatchedEvents.map {
+                mapOf(
+                    "title" to it.title,
+                    "date" to it.date,
+                    "time" to it.time,
+                    "colorId" to (it.colorId ?: "none"),
+                    "status" to it.status
+                )
+            },
+            cancelledGrey = report.eventTracking.cancelledGreyEvents.map {
+                mapOf(
+                    "title" to it.title,
+                    "date" to it.date,
+                    "time" to it.time,
+                    "colorId" to it.colorId,
+                    "type" to it.type
+                )
+            },
+            cancelledRed = report.eventTracking.cancelledRedEvents.map {
+                mapOf(
+                    "title" to it.title,
+                    "date" to it.date,
+                    "time" to it.time,
+                    "colorId" to it.colorId,
+                    "type" to it.type
+                )
+            },
+            supervision = report.eventTracking.supervisionEvents.map {
+                mapOf(
+                    "date" to it.date,
+                    "time" to it.time,
+                    "counted" to it.counted,
+                    "reason" to (it.reason ?: "")
+                )
+            },
+            emptyTitle = report.eventTracking.emptyTitleEvents
+        )
+
         return PayrollResponse(
             employee = EmployeeInfo(
                 id = report.employee.id,
@@ -458,6 +574,7 @@ class PayrollController(
                 companyEarnings = report.totalCompanyEarnings
             ),
             clientBreakdown = clientBreakdown,
+            eventTracking = eventTracking,  // 🆕 Include tracking!
             generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
             syncedToSheets = syncedToSheets
         )
@@ -482,6 +599,15 @@ class PayrollController(
                 companyEarnings = 0.0
             ),
             clientBreakdown = emptyList(),
+            eventTracking = EventTrackingResponse(
+                totalEvents = 0,
+                matchedEvents = 0,
+                unmatchedEvents = emptyList(),
+                cancelledGrey = emptyList(),
+                cancelledRed = emptyList(),
+                supervision = emptyList(),
+                emptyTitle = 0
+            ),
             generatedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
             syncedToSheets = false
         )

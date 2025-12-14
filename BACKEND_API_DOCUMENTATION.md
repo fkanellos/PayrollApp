@@ -389,75 +389,117 @@ Delete all clients for a specific employee.
 
 ### 3. Payroll Calculation
 
-#### **GET /api/payroll/calculate**
+#### **POST /api/payroll/calculate**
 Calculate payroll for an employee in a date range.
 
-**Query Parameters:**
-- `employeeId` (required): Employee ID
-- `startDate` (required): Format `YYYY-MM-DD`
-- `endDate` (required): Format `YYYY-MM-DD`
+**⚠️ Important:** The system fetches **3 weeks** of events (1 week before + 2 week payroll period) to cross-check pending payments and avoid double entries. However, payroll calculations are only for the specified 2-week period.
 
-**Example:**
-```
-GET /api/payroll/calculate?employeeId=-991962534&startDate=2024-11-01&endDate=2024-11-30
+**Request Body:**
+```json
+{
+  "employeeId": "-991962534",
+  "startDate": "2024-11-01T00:00:00",
+  "endDate": "2024-11-30T23:59:59",
+  "syncToSheets": false
+}
 ```
 
 **Response:**
 ```json
 {
-  "employee": {
-    "id": "-991962534",
-    "name": "Αναστασία Καλαμποκά",
-    ...
-  },
-  "period": {
-    "startDate": "2024-11-01",
-    "endDate": "2024-11-30"
-  },
-  "clientSessions": [
-    {
-      "client": {
-        "id": 123,
-        "name": "Ζωή Κουσουλού",
-        "price": 40.0,
-        ...
-      },
-      "sessions": [
+  "id": "abc123",
+  "payroll": {
+    "employee": {
+      "id": "-991962534",
+      "name": "Αναστασία Καλαμποκά",
+      "email": "anastasia@example.com"
+    },
+    "period": "01/11/2024 - 30/11/2024",
+    "summary": {
+      "totalSessions": 15,
+      "totalRevenue": 600.0,
+      "employeeEarnings": 270.0,
+      "companyEarnings": 330.0
+    },
+    "clientBreakdown": [
+      {
+        "clientName": "Ζωή Κουσουλού",
+        "pricePerSession": 40.0,
+        "employeePricePerSession": 18.0,
+        "companyPricePerSession": 22.0,
+        "sessions": 2,
+        "totalRevenue": 80.0,
+        "employeeEarnings": 36.0,
+        "companyEarnings": 44.0,
+        "eventDetails": [
+          {
+            "date": "05/11/2024",
+            "time": "10:00",
+            "duration": "1h",
+            "status": "completed",
+            "colorId": "none"
+          }
+        ]
+      }
+    ],
+    "eventTracking": {
+      "totalEvents": 50,
+      "matchedEvents": 35,
+      "unmatchedEvents": [
         {
-          "date": "2024-11-05",
-          "time": "10:00",
-          "duration": "PT1H",
-          "status": "✅ Completed",
-          "price": 40.0
+          "title": "Νέος Πελάτης",
+          "date": "2024-11-15",
+          "time": "14:00",
+          "colorId": "none",
+          "status": "❓ No client match"
         }
       ],
-      "totalSessions": 2,
-      "totalRevenue": 80.0,
-      "employeeRevenue": 36.0,
-      "companyRevenue": 44.0
-    }
-  ],
-  "supervisionSessions": [
-    {
-      "date": "2024-11-10",
-      "time": "14:00",
-      "duration": "PT1H",
-      "price": 50.0
-    }
-  ],
-  "summary": {
-    "totalSessions": 15,
-    "totalRevenue": 600.0,
-    "employeeRevenue": 270.0,
-    "companyRevenue": 330.0,
-    "supervisionRevenue": 100.0
+      "cancelledGrey": [
+        {
+          "title": "Ζωή Κουσουλού",
+          "date": "2024-11-12",
+          "time": "10:00",
+          "colorId": "8",
+          "type": "grey"
+        }
+      ],
+      "cancelledRed": [
+        {
+          "title": "Άννα Παπαδοπούλου",
+          "date": "2024-11-20",
+          "time": "15:00",
+          "colorId": "11",
+          "type": "red"
+        }
+      ],
+      "supervision": [
+        {
+          "date": "2024-11-10",
+          "time": "14:00",
+          "counted": true,
+          "reason": null
+        }
+      ],
+      "emptyTitle": 5
+    },
+    "generatedAt": "01/12/2024 10:30",
+    "syncedToSheets": false
   }
 }
 ```
 
+**Event Tracking Explanation:**
+- `totalEvents`: All events found in the extended 3-week period
+- `matchedEvents`: Events matched to registered clients
+- `unmatchedEvents`: Events without client match (potential new clients)
+- `cancelledGrey`: Cancelled events (colorId=8) - client will pay next time
+- `cancelledRed`: Cancelled events (colorId=11) - will NOT be paid
+- `supervision`: Supervision sessions (special pricing)
+- `emptyTitle`: Availability hours (ignored in calculations)
+
 **Error Cases:**
 - 404: Employee not found
-- 400: Invalid date format
+- 400: Invalid date format or request body
 - 500: Google Calendar API error
 
 ---
@@ -521,6 +563,186 @@ Get all calendar events for an employee (last 2 weeks).
 **Response:** Detailed event breakdown with matching information
 
 **Use Case:** Debugging, troubleshooting event matching issues
+
+---
+
+#### **GET /api/debug/analyze/{employeeId}?weeks=3**
+🆕 **NEW:** Comprehensive event analysis with full categorization.
+
+**Query Parameters:**
+- `weeks` (optional, default=3): Number of weeks to analyze
+
+**What it does:**
+- Fetches all events for the specified period
+- Categorizes events by type, color, status, and period
+- Provides detailed statistics and summary
+- Terminal-friendly output with comprehensive breakdown
+
+**Response:**
+```json
+{
+  "employee": {
+    "id": "-991962534",
+    "name": "Αναστασία Καλαμποκά",
+    "email": "anastasia@example.com"
+  },
+  "period": {
+    "weeks": 3,
+    "start": "01/11/2024 00:00",
+    "end": "22/11/2024 23:59",
+    "payrollStart": "08/11/2024 00:00"
+  },
+  "summary": {
+    "totalEvents": 75,
+    "emptyTitle": 5,
+    "supervision": 3,
+    "matched": 50,
+    "unmatched": 12,
+    "cancelledGrey": 3,
+    "cancelledRed": 2,
+    "pendingPayment": 3,
+    "inPayrollPeriod": 50,
+    "beforePayrollPeriod": 25
+  },
+  "categorizedEvents": {
+    "matched": [
+      {
+        "id": "event123",
+        "title": "Ζωή Κουσουλού",
+        "date": "15/11/2024",
+        "time": "10:00",
+        "colorId": "none",
+        "isCancelled": false,
+        "isPendingPayment": false,
+        "inPayrollPeriod": true,
+        "status": "✅ Completed",
+        "clientName": "Ζωή Κουσουλού",
+        "willBePaid": true
+      }
+    ],
+    "unmatched": [
+      {
+        "id": "event456",
+        "title": "Νέος Πελάτης",
+        "date": "16/11/2024",
+        "time": "14:00",
+        "colorId": "none",
+        "isCancelled": false,
+        "isPendingPayment": false,
+        "inPayrollPeriod": true,
+        "status": "❓ No client match",
+        "reason": "No client match found in database"
+      }
+    ],
+    "supervision": [
+      {
+        "id": "event789",
+        "title": "Εποπτεία",
+        "date": "17/11/2024",
+        "time": "15:00",
+        "colorId": "none",
+        "isCancelled": false,
+        "isPendingPayment": false,
+        "inPayrollPeriod": true,
+        "status": "✅ Completed",
+        "willBePaid": true
+      }
+    ],
+    "cancelledGrey": [
+      {
+        "id": "event321",
+        "title": "Ζωή Κουσουλού",
+        "date": "12/11/2024",
+        "time": "10:00",
+        "colorId": "8",
+        "isCancelled": true,
+        "isPendingPayment": true,
+        "inPayrollPeriod": true,
+        "status": "⏳ Pending Payment (Grey)",
+        "type": "grey"
+      }
+    ],
+    "cancelledRed": [
+      {
+        "id": "event654",
+        "title": "Άννα Παπαδοπούλου",
+        "date": "20/11/2024",
+        "time": "15:00",
+        "colorId": "11",
+        "isCancelled": true,
+        "isPendingPayment": false,
+        "inPayrollPeriod": true,
+        "status": "❌ Cancelled (Red)",
+        "type": "red"
+      }
+    ],
+    "emptyTitle": [
+      {
+        "id": "event987",
+        "title": "",
+        "date": "18/11/2024",
+        "time": "09:00",
+        "colorId": "none",
+        "isCancelled": false,
+        "isPendingPayment": false,
+        "inPayrollPeriod": true,
+        "status": "✅ Completed"
+      }
+    ],
+    "pendingPayment": [/* same as cancelledGrey */]
+  },
+  "clients": [
+    {
+      "name": "Ζωή Κουσουλού",
+      "price": 40.0
+    }
+  ]
+}
+```
+
+**Use Cases:**
+1. **Identify New Clients:** Check `unmatchedEvents` for clients not in database
+2. **Detect Pending Payments:** Review `cancelledGrey` for sessions that will be paid later
+3. **Verify Supervision:** Check `supervision` events and their payment status
+4. **Data Quality:** Find empty title events and color-coded cancellations
+5. **Period Analysis:** Compare events inside/outside payroll period
+
+**Terminal Output:**
+```
+====================================================================================================
+🔍 COMPREHENSIVE EVENT ANALYSIS
+====================================================================================================
+👤 Employee: Αναστασία Καλαμποκά
+📧 Email: anastasia@example.com
+
+👥 Registered Clients: 85
+
+📆 Analysis Period: 3 weeks
+   Start: 01/11/2024 00:00
+   End:   22/11/2024 23:59
+
+💰 Payroll Period (last 2 weeks):
+   Start: 08/11/2024 00:00
+
+📊 TOTAL EVENTS: 75
+
+====================================================================================================
+📊 SUMMARY
+====================================================================================================
+Total Events: 75
+  ✅ Matched to Clients: 50
+  ❓ Unmatched (New Clients?): 12
+  🎓 Supervision: 3
+  📅 Empty Title (Availability): 5
+  ⏳ Cancelled Grey (Pending Payment): 3
+  ❌ Cancelled Red (NOT Paid): 2
+
+Period Breakdown:
+  💰 In Payroll Period: 50
+  📆 Before Payroll Period: 25
+
+====================================================================================================
+```
 
 ---
 
