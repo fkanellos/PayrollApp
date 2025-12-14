@@ -2,32 +2,84 @@
 
 ## Context
 
-This is a continuation of the PayrollApp backend development. The backend now has comprehensive event tracking capabilities that need to be integrated into the desktop application UI.
+This is a continuation of the PayrollApp backend development. The backend now has comprehensive event tracking and **correct pending payment logic** that needs to be integrated into the desktop application UI.
+
+## Critical Business Logic: Pending Payments
+
+### How Pending Payments Work
+
+**Grey Cancelled Events (colorId="8")** = Pending Payment
+- Client cancelled but will pay next time they come
+- **In current period:**  - Counts as +1 session
+  - Counts as +€0 revenue (NOT PAID YET!)
+  - Shows status "Pending Payment"
+- **In next period when they come:**
+  - Counts as +1 session (the pending from before)
+  - Counts as +€40 revenue (NOW PAID!)
+  - One of their current sessions is marked "Paid for pending [date]"
+
+**Red Cancelled Events (colorId="11")** = Cancelled (NOT paid)
+- Client cancelled and will NOT pay
+- Counts as +0 sessions
+- Counts as +€0 revenue
+- Does not carry over to next period
+
+### Examples
+
+#### Example 1: Grey in Current Period
+```
+Period: 1/1 - 15/1
+  ⏳ 1/1 10:00 - Cancelled (Pending Payment - Grey) - €0
+  ✅ 7/1 14:00 - Completed - €40
+
+Sessions: 2 (1 pending + 1 completed)
+Revenue: €40 (only the completed session!)
+Note: 1 pending payment will be charged next time client comes
+```
+
+#### Example 2: Paying the Pending
+```
+Period: 15/1 - 30/1 (client has 1 pending from 1/1)
+  ✅ 17/1 10:00 - Completed (Paid for pending 1/1) - €40
+  ✅ 24/1 14:00 - Completed - €40
+
+Sessions: 3 (1 from pending + 2 current)
+Revenue: €120 (€40 for pending + €40 + €40)
+✅ Paid 1 pending payment from previous period
+```
+
+#### Example 3: Edge Case - Multiple Pending, Fewer Sessions
+```
+Previous Period: 2 pending (1/1, 7/1)
+Current Period: 1 completed (17/1)
+  ✅ 17/1 10:00 - Completed (Paid for pending 1/1) - €40
+
+Sessions: 2 (1 from pending + 1 current)
+Revenue: €80 (€40 for pending + €40)
+⚠️ Warning: Client still owes 1 pending payment (from 7/1)
+```
+
+---
 
 ## Current System State
 
 ### Backend Features (✅ COMPLETED)
 
-1. **Comprehensive Event Tracking System**
-   - Tracks ALL calendar events in multiple categories
-   - Identifies unmatched events (potential new clients)
-   - Categorizes cancelled events by color:
-     - Grey (colorId=8): Cancelled but client will pay next time (pending payment)
-     - Red (colorId=11): Cancelled and will NOT be paid
-   - Tracks supervision events with special pricing
-   - Identifies empty title events (availability hours)
+1. **Correct Pending Payment Calculation**
+   - Grey cancelled: +1 session, +€0 revenue (until paid)
+   - When paid: +1 session, +€40 revenue in next period
+   - Tracks which sessions paid for which pending
+   - Handles edge cases (multiple pending, unresolved pending)
 
 2. **Extended Event Fetching**
-   - System now fetches **3 weeks** of events (1 week before + 2 week payroll period)
-   - Allows cross-checking pending payments from previous week
-   - Prevents double entries for grey cancelled events that were later completed
-   - Payroll calculations still only for 2-week period
+   - System fetches **3 weeks** of events (1 week before + 2 week payroll period)
+   - Calculations only for 2-week period
+   - 3rd week used for cross-checking pending payments
 
-3. **New API Endpoint: Event Analysis**
-   - **GET /api/debug/analyze/{employeeId}?weeks=3**
-   - Provides comprehensive categorization of all events
-   - Terminal-friendly output with detailed statistics
-   - See BACKEND_API_DOCUMENTATION.md for full details
+3. **Comprehensive Event Tracking**
+   - Unmatched events (potential new clients)
+   - Supervision events with special pricing
+   - Empty title events (availability hours)
 
 ### Tech Stack
 
@@ -36,145 +88,145 @@ This is a continuation of the PayrollApp backend development. The backend now ha
 - **Database:** H2 (in-memory), synced from Google Drive Excel
 - **External APIs:** Google Calendar API, Google Sheets API, Google Drive API
 
+---
+
 ## Your Task
 
-Enhance the desktop application to display the new event tracking information in the payroll results screen.
+Enhance the desktop application to display pending payment information correctly in the payroll results screen.
 
 ## Requirements
 
-### 1. Update Payroll Results Display
+### 1. Display Client Sessions with Pending Payment Status
 
-**Current State:**
-The payroll results screen shows:
-- Employee info
-- Period (2 weeks)
-- Summary (total sessions, revenue, employee/company earnings)
-- Client breakdown with sessions
+For each client in the payroll breakdown, show:
 
-**Required Enhancement:**
-Add a new "Event Tracking" section that displays:
-
-#### A. Summary Statistics
-Display at the top of the payroll results:
 ```
-📊 Event Analysis (3 weeks)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Events: 75
-  ✅ Matched to Clients: 50
-  ❓ Unmatched (New Clients?): 12
-  🎓 Supervision: 3
-  📅 Empty Title (Availability): 5
-  ⏳ Cancelled Grey (Pending Payment): 3
-  ❌ Cancelled Red (NOT Paid): 2
+Client: Ζωή Κουσουλού
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Sessions: 3 | Paid: €120
+  Completed: 2 | Pending: 0 | Paid from previous: 1
 
-Period Breakdown:
-  💰 In Payroll Period (2 weeks): 50
-  📆 Before Payroll Period: 25
+Events:
+  ✅ 17/1 10:00 - Completed (Paid for pending 1/1) - €40
+  ✅ 24/1 14:00 - Completed - €40
+
+Total for this client: €120
+✅ Note: Includes €40 from pending payment (1/1)
 ```
 
-#### B. Unmatched Events List (CRITICAL)
-**Purpose:** Help identify new clients that need to be registered in the database
+**Key Display Elements:**
+- **Sessions Count:** Total (completed + pending + paid from previous)
+- **Revenue:** Only PAID sessions (excludes pending in current)
+- **Session Breakdown:**
+  - Completed in current period
+  - Pending in current period (grey, not paid yet)
+  - Paid from previous period (how many pending got paid)
+- **Event List:** Show all events with clear status indicators
+- **Notes:** Highlight when pending payments were included
 
-Display a dedicated section:
+### 2. Show Pending Payments Clearly
+
+When a client has pending payments in current period:
+
 ```
-❓ UNMATCHED EVENTS - ACTION REQUIRED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-These events don't match any client in the database:
+Client: Άννα Παπαδοπούλου
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Sessions: 2 | Paid: €40
+  Completed: 1 | Pending: 1 | Paid from previous: 0
 
-1. Νέος Πελάτης A
-   📅 16/11/2024 14:00 | Status: ❓ No client match
+Events:
+  ✅ 1/1 10:00 - Completed - €40
+  ⏳ 7/1 14:00 - Cancelled (Pending Payment) - €0
 
-2. Άλλος Πελάτης B
-   📅 18/11/2024 10:00 | Status: ❓ No client match
-
-Action: Add these clients to the database via Clients Management
+Total for this client: €40
+⚠️ Note: 1 pending payment (€40) - will be charged next time
 ```
 
 **Visual Treatment:**
-- Use warning color (orange/yellow background)
-- Make it prominent and eye-catching
-- Include action button: "Manage Clients →"
+- Grey/blue background for pending events
+- Show €0 for pending (not paid yet)
+- Clear note that it will be paid next time
 
-#### C. Pending Payments (Cancelled Grey)
-**Purpose:** Track sessions that were cancelled but client will pay next time
+### 3. Handle Unresolved Pending Payments
 
-```
-⏳ PENDING PAYMENT (Grey Cancelled Events)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-These cancelled sessions will be paid in next period:
-
-1. Ζωή Κουσουλού
-   📅 12/11/2024 10:00 | Color: Grey (8)
-
-2. Άννα Παπαδοπούλου
-   📅 15/11/2024 14:00 | Color: Grey (8)
-```
-
-**Visual Treatment:**
-- Grey/neutral background
-- Info icon
-- Note: "Will be included in next payroll"
-
-#### D. Cancelled Events (Red)
-**Purpose:** Show sessions that were cancelled and will NOT be paid
+When a client owes pending but didn't come:
 
 ```
-❌ CANCELLED SESSIONS (Will NOT be paid)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Μαρία Γεωργίου
-   📅 20/11/2024 15:00 | Color: Red (11)
+Client: Μαρία Γεωργίου
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Sessions: 1 | Paid: €80
+  Completed: 1 | Pending: 0 | Paid from previous: 1
+
+Events:
+  ✅ 17/1 10:00 - Completed (Paid for pending 1/1) - €40
+
+Total for this client: €80
+⚠️ Warning: Client still owes 1 pending payment (from 7/1)
 ```
 
 **Visual Treatment:**
-- Light red background
-- Shows they're not included in payroll totals
+- Orange/yellow warning indicator
+- Clear message about unresolved pending
 
-#### E. Supervision Events
-**Purpose:** Show supervision sessions and their payment status
+### 4. Show Unmatched Events
 
-```
-🎓 SUPERVISION SESSIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. 17/11/2024 15:00 | ✅ Counted in payroll
-2. 10/11/2024 14:00 | ❌ Not counted (Outside period)
-```
-
-#### F. Empty Title Events (Optional - Collapsible)
-**Purpose:** Show availability hours for completeness
+At the bottom of the payroll results:
 
 ```
-📅 AVAILABILITY HOURS (Empty Title Events)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-5 empty title events found (excluded from calculations)
-[Click to expand]
+❓ UNMATCHED NAMES - Add to Database
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+These names don't match any client in the database:
+
+- Νέος Πελάτης
+- Άλλος Πελάτης Β
+- Test Client
+
+[Button: Manage Clients →]
 ```
 
-### 2. Update API Integration
+**Visual Treatment:**
+- Orange/yellow background (requires action)
+- Simple list of names only (no dates/times)
+- Action button to go to client management
 
-**Current endpoint:**
+---
+
+## API Integration
+
+### Updated Data Structures
+
 ```typescript
-POST /api/payroll/calculate
-```
+interface ClientPayrollDetail {
+  clientName: string;
+  pricePerSession: number;
+  employeePricePerSession: number;
+  companyPricePerSession: number;
+  sessions: number;                   // Total (completed + pending + paid from previous)
+  totalRevenue: number;               // Only PAID sessions
+  employeeEarnings: number;
+  companyEarnings: number;
+  eventDetails: EventDetail[];
+  completedSessions: number;          // NEW: Completed in current
+  pendingSessions: number;            // NEW: Pending in current (not paid)
+  paidPendingCount: number;           // NEW: Paid from previous period
+  unresolvedPendingCount: number;     // NEW: Still owe from previous
+}
 
-**New response structure includes `eventTracking` field:**
-```typescript
-interface PayrollResponse {
-  id: string;
-  payroll: {
-    employee: EmployeeInfo;
-    period: string;
-    summary: PayrollSummary;
-    clientBreakdown: ClientPayrollDetail[];
-    eventTracking: EventTracking;  // 🆕 NEW!
-    generatedAt: string;
-    syncedToSheets: boolean;
-  };
+interface EventDetail {
+  date: string;
+  time: string;
+  duration: string;
+  status: string;                     // "completed", "pending_payment", "paid_for_pending"
+  colorId: string;
+  isPending: boolean;                 // NEW: Is this pending (grey)?
+  paidForPending: boolean;            // NEW: Did this pay for previous pending?
+  pendingDate: string | null;         // NEW: Date of pending it paid for
 }
 
 interface EventTracking {
   totalEvents: number;
   matchedEvents: number;
-  unmatchedEvents: UnmatchedEvent[];
+  unmatchedEvents: UnmatchedEvent[];  // Just names to add
   cancelledGrey: CancelledEvent[];
   cancelledRed: CancelledEvent[];
   supervision: SupervisionEvent[];
@@ -182,142 +234,189 @@ interface EventTracking {
 }
 
 interface UnmatchedEvent {
-  title: string;
+  title: string;                      // The name to add to database
   date: string;
   time: string;
   colorId: string;
   status: string;
 }
-
-interface CancelledEvent {
-  title: string;
-  date: string;
-  time: string;
-  colorId: string;
-  type: "grey" | "red";
-}
-
-interface SupervisionEvent {
-  date: string;
-  time: string;
-  counted: boolean;
-  reason: string | null;
-}
 ```
 
-### 3. Optional Enhancement: Event Analysis Dialog
+### Status Values
 
-Add a button "📊 Detailed Event Analysis" that opens a dialog showing the full analysis from:
+- `"completed"` - Normal completed session
+- `"pending_payment"` - Grey cancelled in current period (will be paid next time)
+- `"paid_for_pending"` - This session paid for a previous pending
+- `"cancelled"` - Red cancelled (not paid)
+
+---
+
+## UI Layout
+
+### Payroll Results Screen Structure
+
 ```
-GET /api/debug/analyze/{employeeId}?weeks=3
+┌─────────────────────────────────────────────────┐
+│ Employee: Αναστασία Καλαμποκά                  │
+│ Period: 1/1 - 15/1                             │
+│                                                 │
+│ SUMMARY                                        │
+│ Total Sessions: 25                             │
+│ Total Revenue: €980                            │
+│   Employee: €450                               │
+│   Company: €530                                │
+├─────────────────────────────────────────────────┤
+│ CLIENT BREAKDOWN                               │
+│                                                 │
+│ ┌─ Ζωή Κουσουλού ──────────────────────┐      │
+│ │ Sessions: 3 | Paid: €120              │      │
+│ │   Completed: 2 | Pending: 0 | Paid: 1│      │
+│ │                                        │      │
+│ │ ✅ 17/1 10:00 - Completed (Paid for   │      │
+│ │              pending 1/1) - €40       │      │
+│ │ ✅ 24/1 14:00 - Completed - €40       │      │
+│ │                                        │      │
+│ │ Total: €120                           │      │
+│ │ ✅ Includes €40 from pending (1/1)    │      │
+│ └────────────────────────────────────────┘      │
+│                                                 │
+│ ┌─ Άννα Παπαδοπούλου ──────────────────┐      │
+│ │ Sessions: 2 | Paid: €40               │      │
+│ │   Completed: 1 | Pending: 1 | Paid: 0│      │
+│ │                                        │      │
+│ │ ✅ 1/1 10:00 - Completed - €40        │      │
+│ │ ⏳ 7/1 14:00 - Pending Payment - €0   │      │
+│ │                                        │      │
+│ │ Total: €40                            │      │
+│ │ ⚠️ 1 pending (€40) - will charge next│      │
+│ └────────────────────────────────────────┘      │
+│                                                 │
+│ [More clients...]                              │
+├─────────────────────────────────────────────────┤
+│ ❓ UNMATCHED NAMES                             │
+│                                                 │
+│ - Νέος Πελάτης                                │
+│ - Άλλος Πελάτης                               │
+│                                                 │
+│ [Manage Clients →]                            │
+└─────────────────────────────────────────────────┘
 ```
 
-This provides a comprehensive breakdown useful for troubleshooting and data verification.
+---
 
-## User Experience Guidelines
+## Visual Design Guidelines
 
-1. **Progressive Disclosure:**
-   - Show summary stats always
-   - Show unmatched events prominently (they require action)
-   - Show pending payments section
-   - Make other sections collapsible
+### Color Coding
 
-2. **Visual Hierarchy:**
-   - Most important: Unmatched events (requires action)
-   - Important: Pending payments (needs awareness)
-   - Informational: Cancelled red, supervision, empty title
+- **Completed (✅):** Green - `#22c55e`
+- **Pending Payment (⏳):** Blue/Grey - `#64748b`
+- **Paid for Pending (✅💰):** Green with note - `#10b981`
+- **Cancelled Red (❌):** Light red - `#ef4444` (low opacity)
+- **Unmatched (❓):** Orange - `#f59e0b`
+- **Warning (⚠️):** Yellow/Orange - `#eab308`
 
-3. **Actionability:**
-   - Unmatched events → Link to "Add Client" screen
-   - Pending payments → Just informational (will auto-resolve next period)
-   - Cancelled red → Confirms they're excluded (reassurance)
+### Typography
 
-4. **Color Coding:**
-   - Unmatched: Orange/Yellow (warning, action needed)
-   - Pending Payment: Blue/Grey (informational)
-   - Cancelled Red: Light Red (informational, excluded)
-   - Supervision: Purple/Blue (special category)
-   - Empty Title: Light Grey (low importance)
+- **Client Name:** Bold, 16px
+- **Session Count:** Regular, 14px
+- **Event Details:** Regular, 12px
+- **Notes:** Italic, 12px
+- **Warnings:** Bold, 12px
+
+### Spacing
+
+- Section padding: 16px
+- Client card margin: 8px
+- Event spacing: 4px
+- Note margin-top: 8px
+
+---
 
 ## Testing Checklist
 
 After implementation, test with:
 
-1. **Normal Payroll:**
+1. **Normal Payroll (No Pending):**
    ```
    POST /api/payroll/calculate
    {
      "employeeId": "-991962534",
-     "startDate": "2024-11-01T00:00:00",
-     "endDate": "2024-11-15T23:59:59",
+     "startDate": "2025-01-01T00:00:00",
+     "endDate": "2025-01-15T23:59:59",
      "syncToSheets": false
    }
    ```
 
-2. **Event Analysis:**
-   ```
-   GET /api/debug/analyze/-991962534?weeks=3
-   ```
+2. **With Pending in Current:**
+   - Verify pending shows €0
+   - Verify sessions count includes pending
+   - Verify revenue excludes pending
 
-3. **Verify:**
-   - All event categories display correctly
-   - Unmatched events are prominent
-   - Pending payments show grey color indicator
-   - Cancelled red shows red color indicator
-   - Supervision events show special icon
-   - Totals match between summary and detailed breakdown
+3. **With Pending from Previous:**
+   - Verify "Paid for pending [date]" shows
+   - Verify revenue includes paid pending
+   - Verify sessions count correct
+
+4. **Edge Case - Unresolved Pending:**
+   - Verify warning shows
+   - Verify correct amounts
+
+5. **Unmatched Events:**
+   - Verify names show at bottom
+   - Verify action button works
+
+---
+
+## Success Criteria
+
+✅ Grey pending shows as session but €0 revenue
+✅ When paid, shows "Paid for pending [date]" with €40
+✅ Revenue totals are correct (exclude current pending, include paid pending)
+✅ Session counts are correct (include all)
+✅ Unresolved pending warnings display
+✅ Unmatched names show clearly at bottom
+✅ UI is clean and not overwhelming
+✅ Status icons and colors are clear
+
+---
+
+## Key Business Rules
+
+**CRITICAL:**
+1. **Pending payment (grey) in current period:**
+   - Counts as session ✅
+   - Revenue is €0 ❌ (not paid yet)
+   - Shows in event list as "Pending Payment"
+
+2. **When client comes next time:**
+   - Their first completed session "pays for" the pending
+   - That session shows "Paid for pending [date]"
+   - Revenue includes both: the pending (€40) + current session (€40)
+   - Session count: +1 for pending + +1 for current = +2
+
+3. **Multiple pending:**
+   - Pay as many as they have completed sessions
+   - min(pending count, completed count)
+   - Unresolved = pending count - paid count
+   - Show warning if unresolved > 0
+
+4. **Revenue calculation:**
+   - ONLY paid sessions count in revenue
+   - Pending in current = €0
+   - Paid pending from previous = €40 each
+
+---
 
 ## Reference Documents
 
 1. **BACKEND_API_DOCUMENTATION.md** - Complete API reference
-   - Line 390: `/api/payroll/calculate` endpoint
+   - Line 392: `/api/payroll/calculate` endpoint
    - Line 569: `/api/debug/analyze` endpoint
-   - Full request/response examples
 
-2. **Color-Based Event Detection:**
-   - Grey (colorId=8): Pending payment
-   - Red (colorId=11): Cancelled, will NOT be paid
-   - See `application.properties` lines 11-15
-
-## Success Criteria
-
-✅ Event tracking section displays all categories correctly
-✅ Unmatched events are visually prominent and actionable
-✅ Pending payments (grey) clearly distinguished from cancelled red
-✅ Supervision events show payment status
-✅ UI is clean and doesn't overwhelm the user
-✅ Progressive disclosure works (collapsible sections)
-✅ All data from `eventTracking` field is utilized
-
-## Key Insight
-
-**Why This Matters:**
-> "It's important to track cancelled appointments both grey and red, supervisions, and events that don't match - i.e., new clients that haven't been registered!" - User
-
-The unmatched events feature is critical because it helps discover:
-- New clients that need to be added to the database
-- Typos in client names in calendar
-- Events that need attention
-
-The grey vs red cancellation distinction prevents:
-- Double charging clients (if grey event is paid twice)
-- Missing payments (if grey event is not tracked)
-
-## Notes
-
-- The backend automatically fetches 3 weeks of events but only calculates payroll for 2 weeks
-- This 3-week window allows cross-checking pending payments from the previous week
-- The payroll totals only include events from the 2-week payroll period
-- Events outside the payroll period are tracked for analysis but not included in totals
-
-## Questions?
-
-Refer to:
-1. BACKEND_API_DOCUMENTATION.md for complete API details
-2. The `/api/debug/analyze` endpoint for testing and verification
-3. PayrollController.kt:445-483 for the eventTracking response structure
-4. PayrollCalculationService.kt:180-246 for the categorization logic
+2. **Backend Logic:**
+   - PayrollCalculationService.kt:112-166 - Pending payment calculation
+   - PayrollController.kt:492-560 - Response creation with pending tracking
 
 ---
 
-**Ready to start?** Begin by updating the TypeScript interfaces to include the `eventTracking` field, then enhance the payroll results display component.
+**Ready to start?** Begin by updating the TypeScript interfaces, then enhance the client payroll detail component to show pending payment information clearly.

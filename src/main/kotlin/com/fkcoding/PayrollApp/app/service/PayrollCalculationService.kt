@@ -10,10 +10,14 @@ data class PayrollEntry(
     val clientPrice: Double,
     val employeePrice: Double,
     val companyPrice: Double,
-    val sessionsCount: Int,
-    val totalRevenue: Double,
+    val sessionsCount: Int,              // Total: completed + pending + paid from previous
+    val totalRevenue: Double,            // Only PAID sessions (completed + paid from previous)
     val employeeEarnings: Double,
-    val companyEarnings: Double
+    val companyEarnings: Double,
+    val completedSessions: Int = 0,      // Completed in current period
+    val pendingSessions: Int = 0,        // Grey cancelled in current (not paid yet)
+    val paidPendingCount: Int = 0,       // Pending from previous that got paid
+    val unresolvedPendingCount: Int = 0  // Pending from previous that still owe
 )
 
 data class EventTracking(
@@ -100,7 +104,7 @@ class PayrollCalculationService {
         val clientLookup = clients.associateBy { it.name }
         val matchedEventIds = clientEvents.values.flatten().map { it.id }.toSet()
 
-        // 1. Process client events (existing logic)
+        // 1. Process client events with CORRECT pending payment logic
         clientEvents.forEach { (clientName, events) ->
             // Skip if this is the supervision keyword
             if (supervisionConfig != null && clientName in supervisionConfig.keywords) {
@@ -109,18 +113,43 @@ class PayrollCalculationService {
 
             val client = clientLookup[clientName] ?: return@forEach
 
-            val validEvents = events.filter { event ->
+            // Separate events by type IN CURRENT PERIOD
+            val completedInCurrent = events.filter { event ->
                 event.startTime.isAfter(periodStart) &&
                         event.startTime.isBefore(periodEnd) &&
-                        (!event.isCancelled || event.isPendingPayment)
+                        !event.isCancelled
             }
 
-            if (validEvents.isNotEmpty()) {
-                val sessionsCount = validEvents.size
-                val clientRevenue = sessionsCount * client.price
-                val employeeEarnings = sessionsCount * client.employeePrice
-                val companyEarnings = sessionsCount * client.companyPrice
+            val pendingInCurrent = events.filter { event ->
+                event.startTime.isAfter(periodStart) &&
+                        event.startTime.isBefore(periodEnd) &&
+                        event.isCancelled &&
+                        event.isPendingPayment  // Grey cancelled
+            }
 
+            // Find pending payments from PREVIOUS PERIOD (week -1)
+            val previousPeriodStart = periodStart.minusWeeks(1)
+            val pendingFromPrevious = events.filter { event ->
+                event.startTime.isAfter(previousPeriodStart) &&
+                        event.startTime.isBefore(periodStart) &&
+                        event.isCancelled &&
+                        event.isPendingPayment  // Grey from previous week
+            }
+
+            // Calculate how many pending from previous get paid
+            val paidPendingCount = minOf(pendingFromPrevious.size, completedInCurrent.size)
+            val unresolvedPendingCount = pendingFromPrevious.size - paidPendingCount
+
+            // Calculate sessions and revenue
+            val sessionsCount = completedInCurrent.size + pendingInCurrent.size + paidPendingCount
+            val paidSessionsCount = completedInCurrent.size + paidPendingCount  // NOT pending in current!
+
+            val clientRevenue = paidSessionsCount * client.price  // Only PAID sessions!
+            val employeeEarnings = paidSessionsCount * client.employeePrice
+            val companyEarnings = paidSessionsCount * client.companyPrice
+
+            // Only create entry if there are any sessions
+            if (sessionsCount > 0) {
                 val entry = PayrollEntry(
                     clientName = clientName,
                     clientPrice = client.price,
@@ -129,7 +158,11 @@ class PayrollCalculationService {
                     sessionsCount = sessionsCount,
                     totalRevenue = clientRevenue,
                     employeeEarnings = employeeEarnings,
-                    companyEarnings = companyEarnings
+                    companyEarnings = companyEarnings,
+                    completedSessions = completedInCurrent.size,
+                    pendingSessions = pendingInCurrent.size,
+                    paidPendingCount = paidPendingCount,
+                    unresolvedPendingCount = unresolvedPendingCount
                 )
 
                 entries.add(entry)
